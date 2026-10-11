@@ -47,6 +47,11 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    # secrets.* is not a valid context inside a step's `if:` (actionlint);
+    # computing it once here, through `env:` (where `secrets` is allowed),
+    # is the documented workaround every later step's `if:` reads instead.
+    env:
+      HAS_SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -71,7 +76,7 @@ jobs:
       # SIGNPATH_API_TOKEN is not set, so nothing else in this job depends
       # on it being configured.
       - name: Submit the installer to SignPath for signing
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ env.HAS_SIGNPATH == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-installer
@@ -79,7 +84,7 @@ jobs:
           retention-days: 1
         id: upload-unsigned
       - name: Sign the installer
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ env.HAS_SIGNPATH == 'true' }}
         uses: signpath/github-action-submit-signing-request@v1
         with:
           api-token: "${{ secrets.SIGNPATH_API_TOKEN }}"
@@ -93,7 +98,7 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: installer-signed
       - name: Replace the installer with its signed copy
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ env.HAS_SIGNPATH == 'true' }}
         run: Move-Item -Force installer-signed\aion-theory-sync-setup.exe installer\aion-theory-sync-setup.exe
       - name: Checksum the installer
         run: |
