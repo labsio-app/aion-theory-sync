@@ -28,14 +28,20 @@ builds:
       - -H=windowsgui
 
 archives:
+  # Both default to the same name (goreleaser's default template keys off
+  # the shared project name, not the per-archive binary), which collided
+  # and failed the v0.2.0 release outright; name_template disambiguates
+  # them explicitly instead of relying on the default.
   - id: aion-theory-sync
     ids: [aion-theory-sync]
+    name_template: "aion-theory-sync_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [zip]
     files:
       - README.md
       - LICENSE
   - id: aion-theory-sync-gui
     ids: [aion-theory-sync-gui]
+    name_template: "aion-theory-sync-gui_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [zip]
     files:
       - README.md
