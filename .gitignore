@@ -1,3 +1,5 @@
 aion-theory-sync
 *.exe
 dist/
+build/
+*.syso

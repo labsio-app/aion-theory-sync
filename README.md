@@ -15,30 +15,42 @@ Sync your AION 2 DPS meter combat logs to your [Aion Theory](https://aion-theory
 <details open>
 <summary>Déplier / replier</summary>
 
-Un seul exécutable, sans dépendance, pour Windows. Il lit les journaux de
-combat que le [DPS Meter A2Tools](https://a2tools.app) écrit sur votre
-machine et envoie chaque nouveau combat vers votre compte Aion Theory, où les
-mesures sont attachées à votre personnage déclaré.
+Une application installable pour Windows. Elle lit les journaux de combat
+que le [DPS Meter A2Tools](https://a2tools.app) écrit sur votre machine et
+envoie chaque nouveau combat vers votre compte Aion Theory, où les mesures
+sont attachées à votre personnage déclaré.
 
 ### Fonctionnement
 
-1. Téléchargez la dernière version, décompressez-la et lancez
-   `aion-theory-sync.exe`.
-2. Au premier lancement, un code et un lien s'affichent : ouvrez le lien,
-   connectez-vous à Aion Theory, puis saisissez le code. L'outil est alors
-   lié à votre compte — il ne voit jamais votre mot de passe, seulement une
-   habilitation révocable que vous pouvez retirer à tout moment depuis votre
-   page de compte.
-3. Chaque lancement parcourt `%APPDATA%\com.a2tools.dps-meter\history\` et
-   envoie les combats pas encore synchronisés. La synchronisation est
-   idempotente : un nouveau lancement ne duplique jamais rien, un envoi en
-   échec est retenté sans risque, et les journaux d'un personnage déclaré
-   plus tard sont repris au lancement suivant.
+1. Téléchargez `aion-theory-sync-setup.exe` depuis la
+   [dernière version](https://github.com/labsio-app/aion-theory-sync/releases/latest)
+   et installez-le — un dossier d'installation, un raccourci dans le menu
+   Démarrer et, si vous le cochez, sur le bureau.
+2. Au premier lancement, choisissez (ou laissez la valeur par défaut) le
+   dossier d'historique du DPS meter, puis cliquez sur « Se connecter et
+   synchroniser ». Un code s'affiche et le navigateur s'ouvre sur Aion
+   Theory : connectez-vous, saisissez le code. L'outil est alors lié à
+   votre compte — il ne voit jamais votre mot de passe, seulement une
+   habilitation révocable que vous pouvez retirer à tout moment depuis
+   votre page de compte.
+3. Chaque clic sur « Se connecter et synchroniser » envoie les combats pas
+   encore synchronisés. La synchronisation est idempotente : un nouveau
+   lancement ne duplique jamais rien, un envoi en échec est retenté sans
+   risque, et les journaux d'un personnage déclaré plus tard sont repris
+   au lancement suivant.
 
-Relancez l'outil quand vous le souhaitez pour synchroniser vos derniers
-combats — cette version ne tourne pas en arrière-plan.
+Relancez l'application quand vous le souhaitez pour synchroniser vos
+derniers combats — elle ne tourne pas en arrière-plan.
 
-### Options
+> **Windows peut encore afficher un avertissement SmartScreen** au premier
+> lancement (« Éditeur non reconnu ») : l'installeur n'est pas encore signé.
+> Voir [docs/code-signing.md](docs/code-signing.md) pour le statut et la
+> démarche (signature gratuite via SignPath, pour les projets open source).
+
+### Options avancées (ligne de commande)
+
+L'installeur pose aussi `aion-theory-sync.exe`, un exécutable console sans
+fenêtre pour un usage scripté ou un serveur de staging :
 
 ```
 aion-theory-sync.exe [flags]
@@ -48,6 +60,9 @@ aion-theory-sync.exe [flags]
   -config-dir string     où l'outil garde sa propre habilitation (défaut : %APPDATA%\aion-theory-sync)
   -relink                oublier l'habilitation enregistrée et relier cet appareil
 ```
+
+Ce même exécutable, en version autonome (zip, sans installeur), reste
+publié à chaque version.
 
 ### Ce qui est envoyé
 
@@ -85,15 +100,19 @@ machine ne devrait pas demander une confiance aveugle. Ce dépôt est
 intégralement la source réelle de chaque version publiée. Rien n'est caché.
 
 - Lisez le code avant de l'exécuter : la liaison commence dans
-  [`main.go`](main.go), le flux d'autorisation dans
-  [`internal/auth/`](internal/auth), ce qui est envoyé dans
-  [`internal/sync/`](internal/sync).
+  [`main.go`](main.go) (console) et [`cmd/gui/`](cmd/gui) (application), le
+  flux d'autorisation dans [`internal/auth/`](internal/auth), ce qui est
+  envoyé dans [`internal/sync/`](internal/sync).
 - Chaque version est construite par
   [GitHub Actions](.github/workflows/release.yml) à partir de cette source
   exacte, pas depuis une machine à qui il faudrait faire confiance —
   comparez les sommes de contrôle publiées, ou construisez l'outil
-  vous-même : `go build` depuis un clone propre, sans dépendance externe à
-  récupérer.
+  vous-même : `go build` depuis un clone propre. L'exécutable console
+  (`main.go`) n'a toujours aucune dépendance externe ; l'application
+  (`cmd/gui`) en a quelques-unes, toutes open source et épinglées dans
+  [`go.mod`](go.mod) — [`tailscale/walk`](https://github.com/tailscale/walk)
+  pour la fenêtre native Windows et ce qu'elle entraîne avec elle
+  (`golang.org/x/sys`, notamment), rien d'opaque ni de compilé à l'avance.
 
 </details>
 
@@ -104,27 +123,39 @@ intégralement la source réelle de chaque version publiée. Rien n'est caché.
 <details>
 <summary>Expand / collapse</summary>
 
-A single, dependency-free executable for Windows. It reads the combat logs
-the [A2Tools DPS Meter](https://a2tools.app) writes on your machine and
-uploads each new combat to your Aion Theory account, where the measures are
-attached to your declared character.
+An installable Windows application. It reads the combat logs the
+[A2Tools DPS Meter](https://a2tools.app) writes on your machine and uploads
+each new combat to your Aion Theory account, where the measures are attached
+to your declared character.
 
 ### How it works
 
-1. Download the latest release, unzip it, and run `aion-theory-sync.exe`.
-2. The first run shows a short code and a link: open the link, sign in to
-   Aion Theory, and enter the code. The tool is now linked to your account —
-   it never sees your password, only a revocable credential you can take back
-   any time from your account page.
-3. Every run scans `%APPDATA%\com.a2tools.dps-meter\history\` and uploads the
-   combats not yet synced. The sync is idempotent: re-running it never
-   duplicates anything, a failed upload is safely retried, and logs for a
-   character you declare later are picked up by the next run.
+1. Download `aion-theory-sync-setup.exe` from the
+   [latest release](https://github.com/labsio-app/aion-theory-sync/releases/latest)
+   and install it — an install folder, a Start Menu shortcut, and a desktop
+   icon if you check that box.
+2. On first launch, pick (or keep the default) DPS meter history folder,
+   then click "Connect and sync". A code appears and your browser opens on
+   Aion Theory: sign in, enter the code. The tool is now linked to your
+   account — it never sees your password, only a revocable credential you
+   can take back any time from your account page.
+3. Every click on "Connect and sync" uploads the combats not yet synced.
+   The sync is idempotent: re-running it never duplicates anything, a
+   failed upload is safely retried, and logs for a character you declare
+   later are picked up by the next run.
 
 Run it again whenever you want your latest combats synced — there is no
 background watcher in this version.
 
-### Options
+> **Windows may still show a SmartScreen warning** ("Unrecognized
+> publisher") on first launch: the installer is not signed yet. See
+> [docs/code-signing.md](docs/code-signing.md) for the plan (free signing
+> through SignPath for open-source projects).
+
+### Advanced options (command line)
+
+The installer also places `aion-theory-sync.exe`, a windowless console
+build for scripted use or a staging server:
 
 ```
 aion-theory-sync.exe [flags]
@@ -134,6 +165,9 @@ aion-theory-sync.exe [flags]
   -config-dir string     where this tool keeps its own credential (default: %APPDATA%\aion-theory-sync)
   -relink                forget the stored credential and link this device again
 ```
+
+This same executable also keeps shipping on its own, as a plain zip with
+no installer, on every release.
 
 ### What is uploaded
 
@@ -168,13 +202,18 @@ should not ask for blind trust. This entire repository — the device-link
 flow, what gets read from disk, what gets sent over the wire — is the real
 source of every release. Nothing is withheld.
 
-- Read the code before you run it: linking starts in [`main.go`](main.go),
-  the device flow in [`internal/auth/`](internal/auth), what gets uploaded in
+- Read the code before you run it: linking starts in [`main.go`](main.go)
+  (console) and [`cmd/gui/`](cmd/gui) (the app), the device flow in
+  [`internal/auth/`](internal/auth), what gets uploaded in
   [`internal/sync/`](internal/sync).
 - Every release is built by [GitHub Actions](.github/workflows/release.yml)
   from this exact source, not from a machine you have to trust — compare the
-  published checksums, or build it yourself: `go build` from a clean clone,
-  no external dependencies to pull in.
+  published checksums, or build it yourself: `go build` from a clean clone.
+  The console build (`main.go`) still has no external dependency; the app
+  (`cmd/gui`) has a few, all open source and pinned in
+  [`go.mod`](go.mod) — [`tailscale/walk`](https://github.com/tailscale/walk)
+  for the native Windows window and what it brings with it
+  (`golang.org/x/sys`, notably), nothing closed or pre-compiled.
 
 </details>
 

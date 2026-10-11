@@ -21,6 +21,13 @@ var pollInterval = 4 * time.Second
 // responsible for calling ClearCredential and re-running this after an
 // upload is rejected with 401 (F16).
 func EnsureCredential(ctx context.Context, client *api.Client, dir string, out io.Writer) (string, error) {
+	return EnsureCredentialWithGrant(ctx, client, dir, out, nil)
+}
+
+// EnsureCredentialWithGrant is EnsureCredential, but also hands a freshly
+// opened device grant to onGrant as soon as it is known, before polling
+// begins — the GUI's hook to render the code without parsing out (T1).
+func EnsureCredentialWithGrant(ctx context.Context, client *api.Client, dir string, out io.Writer, onGrant func(api.DeviceGrant)) (string, error) {
 	stored, err := LoadCredential(dir)
 	if err != nil {
 		return "", err
@@ -28,15 +35,24 @@ func EnsureCredential(ctx context.Context, client *api.Client, dir string, out i
 	if stored != "" {
 		return stored, nil
 	}
-	return RunDeviceFlow(ctx, client, dir, out)
+	return RunDeviceFlowWithGrant(ctx, client, dir, out, onGrant)
 }
 
 // RunDeviceFlow opens a device grant, shows the member the code and the
 // link, and polls until it is approved, denied or expired.
 func RunDeviceFlow(ctx context.Context, client *api.Client, dir string, out io.Writer) (string, error) {
+	return RunDeviceFlowWithGrant(ctx, client, dir, out, nil)
+}
+
+// RunDeviceFlowWithGrant is RunDeviceFlow, but also hands the opened grant
+// to onGrant as soon as it is known, before polling begins.
+func RunDeviceFlowWithGrant(ctx context.Context, client *api.Client, dir string, out io.Writer, onGrant func(api.DeviceGrant)) (string, error) {
 	grant, err := client.OpenDevice(ctx)
 	if err != nil {
 		return "", fmt.Errorf("opening a device grant: %w", err)
+	}
+	if onGrant != nil {
+		onGrant(grant)
 	}
 
 	fmt.Fprintf(out, "Open %s and enter this code: %s\n", grant.VerificationURL, grant.UserCode)

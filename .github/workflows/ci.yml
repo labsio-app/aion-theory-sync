@@ -12,13 +12,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.24"
       - run: go build ./...
       - run: go vet ./...
       - run: gofmt -l . | (! grep .)
       - run: go test ./...
       # The only platform this ships for (T3); without this, the DPAPI
-      # syscall file (internal/auth/protect_windows.go) is never compiled
-      # on this ubuntu runner at all (review finding F23).
+      # syscall file (internal/auth/protect_windows.go) and the GUI
+      # (cmd/gui/main_windows.go) are never compiled on this ubuntu runner
+      # at all (review finding F23).
+      - run: go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.7.0 -icon=assets/icon.ico -o=cmd/gui/resource_windows_amd64.syso cmd/gui/versioninfo.json
       - run: GOOS=windows GOARCH=amd64 go build ./...
       - run: GOOS=windows GOARCH=amd64 go vet ./...

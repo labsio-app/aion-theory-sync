@@ -1,5 +1,12 @@
 version: 2
 
+# cmd/gui's resource_windows_amd64.syso (the embedded icon and version
+# info) is generated here rather than committed, so it is never stale
+# against assets/icon.ico or cmd/gui/versioninfo.json.
+before:
+  hooks:
+    - go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.7.0 -icon=assets/icon.ico -o=cmd/gui/resource_windows_amd64.syso cmd/gui/versioninfo.json
+
 builds:
   - id: aion-theory-sync
     main: .
@@ -8,13 +15,32 @@ builds:
     goarch: [amd64]
     flags:
       - -trimpath
+  - id: aion-theory-sync-gui
+    main: ./cmd/gui
+    binary: aion-theory-sync-gui
+    goos: [windows]
+    goarch: [amd64]
+    flags:
+      - -trimpath
+    # Suppresses the console window a plain Windows console-subsystem
+    # build would otherwise flash open behind the GUI on every launch.
+    ldflags:
+      - -H=windowsgui
 
 archives:
   - id: aion-theory-sync
+    ids: [aion-theory-sync]
     formats: [zip]
     files:
       - README.md
       - LICENSE
+  - id: aion-theory-sync-gui
+    ids: [aion-theory-sync-gui]
+    formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - assets/*
 
 checksum:
   name_template: checksums.txt

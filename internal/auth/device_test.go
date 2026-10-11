@@ -64,6 +64,51 @@ func TestRunDeviceFlow_waitsForApprovalThenSavesTheCredential(t *testing.T) {
 	}
 }
 
+func TestRunDeviceFlowWithGrant_handsTheGrantToTheCallbackBeforePolling(t *testing.T) {
+	var polls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/sync/device":
+			json.NewEncoder(w).Encode(map[string]string{
+				"grantId":         "grant-1",
+				"userCode":        "ABCD-1234",
+				"verificationUrl": "https://aion-theory.example/activate",
+			})
+		case r.URL.Path == "/api/sync/token":
+			if polls.Add(1) < 2 {
+				json.NewEncoder(w).Encode(map[string]string{"status": "pending"})
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]string{
+				"status":     "approved",
+				"credential": "sync-credential-xyz",
+			})
+		}
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	client := api.New(server.URL)
+	withFastPolling(t)
+
+	var gotGrant api.DeviceGrant
+	var calledBeforePolled bool
+	var out strings.Builder
+	_, err := RunDeviceFlowWithGrant(context.Background(), client, dir, &out, func(grant api.DeviceGrant) {
+		gotGrant = grant
+		calledBeforePolled = polls.Load() == 0
+	})
+	if err != nil {
+		t.Fatalf("RunDeviceFlowWithGrant: %v", err)
+	}
+	if gotGrant.UserCode != "ABCD-1234" {
+		t.Fatalf("UserCode = %q, want ABCD-1234", gotGrant.UserCode)
+	}
+	if !calledBeforePolled {
+		t.Fatal("onGrant was called after polling had already started")
+	}
+}
+
 func TestEnsureCredential_reusesAStoredCredentialWithoutADeviceFlow(t *testing.T) {
 	dir := t.TempDir()
 	if err := SaveCredential(dir, "already-linked"); err != nil {
