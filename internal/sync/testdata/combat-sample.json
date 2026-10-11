@@ -1,0 +1,26 @@
+{
+  "id": "auto_90001_1700000000000",
+  "bossName": "Training Dummy",
+  "targetId": 90001,
+  "startTimeMs": 1700000000000,
+  "durationMs": 42000,
+  "totalDamage": 123456,
+  "serverId": 1303,
+  "dungeonId": null,
+  "mobCode": null,
+  "actors": [
+    {
+      "actorId": 1,
+      "nickname": "TestHealer",
+      "job": "Chanter",
+      "jobId": 17,
+      "dbid": 1000000000000001,
+      "serverId": 1303,
+      "level": 45,
+      "gearScore": 1000,
+      "combatPower": 50000
+    }
+  ],
+  "skills": [],
+  "healSkills": []
+}
