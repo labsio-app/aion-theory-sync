@@ -15,6 +15,12 @@ builds:
     goarch: [amd64]
     flags:
       - -trimpath
+    # internal/version.Version, read back by internal/update (GUI
+    # self-update) to compare this build against GitHub's latest release
+    # tag — {{ .Tag }} (not .Version) so it carries the same "v" prefix
+    # the tag_name field in GitHub's releases API reports.
+    ldflags:
+      - -X github.com/labsio-app/aion-theory-sync/internal/version.Version={{ .Tag }}
   - id: aion-theory-sync-gui
     main: ./cmd/gui
     binary: aion-theory-sync-gui
@@ -22,31 +28,30 @@ builds:
     goarch: [amd64]
     flags:
       - -trimpath
-    # Suppresses the console window a plain Windows console-subsystem
-    # build would otherwise flash open behind the GUI on every launch.
     ldflags:
+      # -H=windowsgui suppresses the console window a plain
+      # console-subsystem build would otherwise flash open behind the GUI
+      # on every launch.
       - -H=windowsgui
+      - -X github.com/labsio-app/aion-theory-sync/internal/version.Version={{ .Tag }}
 
 archives:
   # Both default to the same name (goreleaser's default template keys off
   # the shared project name, not the per-archive binary), which collided
   # and failed the v0.2.0 release outright; name_template disambiguates
   # them explicitly instead of relying on the default.
+  #
+  # formats: [binary] publishes the raw .exe straight to the release
+  # (no .zip wrapper): one fewer step for a member, and the GUI build's
+  # name is also the exact asset internal/update looks for by name.
   - id: aion-theory-sync
     ids: [aion-theory-sync]
     name_template: "aion-theory-sync_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    formats: [zip]
-    files:
-      - README.md
-      - LICENSE
+    formats: [binary]
   - id: aion-theory-sync-gui
     ids: [aion-theory-sync-gui]
     name_template: "aion-theory-sync-gui_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    formats: [zip]
-    files:
-      - README.md
-      - LICENSE
-      - assets/*
+    formats: [binary]
 
 checksum:
   name_template: checksums.txt

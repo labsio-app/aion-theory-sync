@@ -40,7 +40,10 @@ sont attachées à votre personnage déclaré.
    au lancement suivant.
 
 Relancez l'application quand vous le souhaitez pour synchroniser vos
-derniers combats — elle ne tourne pas en arrière-plan.
+derniers combats — elle ne tourne pas en arrière-plan. À chaque lancement,
+elle vérifie en silence si une version plus récente est publiée et, le cas
+échéant, propose de l'installer en un clic (pas de réouverture du
+navigateur, pas de nouveau téléchargement manuel).
 
 > **Windows peut encore afficher un avertissement SmartScreen** au premier
 > lancement (« Éditeur non reconnu ») : l'installeur n'est pas encore signé.
@@ -61,8 +64,8 @@ aion-theory-sync.exe [flags]
   -relink                oublier l'habilitation enregistrée et relier cet appareil
 ```
 
-Ce même exécutable, en version autonome (zip, sans installeur), reste
-publié à chaque version.
+Ce même exécutable, en version autonome (l'exécutable brut, sans zip ni
+installeur), reste publié à chaque version.
 
 ### Ce qui est envoyé
 
@@ -145,7 +148,9 @@ to your declared character.
    later are picked up by the next run.
 
 Run it again whenever you want your latest combats synced — there is no
-background watcher in this version.
+background watcher in this version. On every launch it quietly checks
+whether a newer version was published and, if so, offers to install it in
+one click — no browser, no manual re-download.
 
 > **Windows may still show a SmartScreen warning** ("Unrecognized
 > publisher") on first launch: the installer is not signed yet. See
@@ -166,8 +171,8 @@ aion-theory-sync.exe [flags]
   -relink                forget the stored credential and link this device again
 ```
 
-This same executable also keeps shipping on its own, as a plain zip with
-no installer, on every release.
+This same executable also keeps shipping on its own, as a raw binary with
+no zip and no installer, on every release.
 
 ### What is uploaded
 

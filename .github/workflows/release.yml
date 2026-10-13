@@ -65,9 +65,29 @@ jobs:
         shell: bash
         run: go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.7.0 -icon=assets/icon.ico -o=cmd/gui/resource_windows_amd64.syso cmd/gui/versioninfo.json
       - name: Build both binaries the installer bundles
+        # -X internal/version.Version embeds github.ref_name (e.g.
+        # "v0.2.0") in both binaries, so the installed GUI can compare
+        # itself against GitHub's latest release tag (internal/update) —
+        # without it, this build would report "dev" and self-update would
+        # never trigger for members who installed via Setup.exe.
         run: |
-          go build -trimpath -ldflags "-H=windowsgui" -o build\aion-theory-sync-gui.exe ./cmd/gui
-          go build -trimpath -o build\aion-theory-sync.exe .
+          go build -trimpath -ldflags "-H=windowsgui -X github.com/labsio-app/aion-theory-sync/internal/version.Version=${{ github.ref_name }}" -o build\aion-theory-sync-gui.exe ./cmd/gui
+          go build -trimpath -ldflags "-X github.com/labsio-app/aion-theory-sync/internal/version.Version=${{ github.ref_name }}" -o build\aion-theory-sync.exe .
+      - name: Smoke-test that the GUI exe actually opens instead of crashing
+        # v0.2.2 shipped with this exact binary crashing on every single
+        # launch before its window ever appeared (missing walk.InitApp(),
+        # see cmd/gui/main_windows.go) — nothing upstream of this step
+        # would have caught it. A silent regression here must fail the
+        # release before Setup.exe gets built around a dead binary.
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath "build\aion-theory-sync-gui.exe" -PassThru
+          Start-Sleep -Seconds 3
+          if ($proc.HasExited) {
+            Write-Error "aion-theory-sync-gui.exe exited on its own (code $($proc.ExitCode)) instead of opening its window."
+            exit 1
+          }
+          Stop-Process -Id $proc.Id -Force
       - name: Compile the installer
         run: |
           choco install innosetup --no-progress -y

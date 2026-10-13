@@ -24,3 +24,32 @@ jobs:
       - run: go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.7.0 -icon=assets/icon.ico -o=cmd/gui/resource_windows_amd64.syso cmd/gui/versioninfo.json
       - run: GOOS=windows GOARCH=amd64 go build ./...
       - run: GOOS=windows GOARCH=amd64 go vet ./...
+
+  # Cross-compiling the GUI above only proves it builds, not that it runs:
+  # v0.2.2 shipped with the window crashing before it ever appeared on
+  # every single launch (missing walk.InitApp(), see cmd/gui/main_windows.go)
+  # and this ubuntu-only CI never caught it. This job actually launches the
+  # built exe on a real Windows desktop session and fails if it exits on
+  # its own — the one signal a plain build/vet can't give.
+  windows-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Embed the icon and version info as a Windows resource
+        shell: bash
+        run: go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.7.0 -icon=assets/icon.ico -o=cmd/gui/resource_windows_amd64.syso cmd/gui/versioninfo.json
+      - name: Build the GUI exe
+        run: go build -trimpath -ldflags "-H=windowsgui" -o build\aion-theory-sync-gui.exe ./cmd/gui
+      - name: Launch it and confirm it stays open instead of crashing
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath "build\aion-theory-sync-gui.exe" -PassThru
+          Start-Sleep -Seconds 3
+          if ($proc.HasExited) {
+            Write-Error "aion-theory-sync-gui.exe exited on its own (code $($proc.ExitCode)) instead of opening its window."
+            exit 1
+          }
+          Stop-Process -Id $proc.Id -Force
