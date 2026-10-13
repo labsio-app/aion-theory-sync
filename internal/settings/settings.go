@@ -1,7 +1,8 @@
-// Package settings owns the member's own preferences for this tool — today,
-// only which folder to read combat logs from — kept separate from
-// internal/auth's credential so a corrupt or cleared preference never costs
-// the device's link (single responsibility, same config directory).
+// Package settings owns the member's own preferences for this tool — which
+// folder to read combat logs from, and when the last sync completed — kept
+// separate from internal/auth's credential so a corrupt or cleared
+// preference never costs the device's link (single responsibility, same
+// config directory).
 package settings
 
 import (
@@ -14,6 +15,11 @@ import (
 // reused on every later launch until they pick a different folder.
 type Settings struct {
 	HistoryDir string `json:"historyDir"`
+
+	// LastSyncedAt is RFC3339, set after a sync completes successfully —
+	// the GUI's onboarding status reads it to show "Dernière synchro : …"
+	// instead of re-deriving it from the uploaded combat logs themselves.
+	LastSyncedAt string `json:"lastSyncedAt,omitempty"`
 }
 
 func settingsPath(dir string) string {

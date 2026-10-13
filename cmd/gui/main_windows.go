@@ -37,6 +37,33 @@ const defaultServerURL = "https://aion-theory.labsio.app"
 // upload pass that follows approval.
 const runTimeout = 20 * time.Minute
 
+// Brand palette, mirrored from the website's apps/web/app/assets/tokens.css
+// (confirmed with the site's own team rather than guessed from a screenshot):
+// ground/ground-deep for backgrounds, elyos/asmodian for the two faction
+// accents, text/text-soft/muted/faint for the type scale. Kept as package
+// vars, not consts: walk.RGB is a function, not a constant expression.
+var (
+	colorGround      = walk.RGB(0x08, 0x07, 0x1a)
+	colorGroundDeep  = walk.RGB(0x04, 0x03, 0x0e)
+	colorAccentElyos = walk.RGB(0x6b, 0xd5, 0xff)
+	colorText        = walk.RGB(0xf2, 0xee, 0xfa)
+	colorTextSoft    = walk.RGB(0xcf, 0xc7, 0xe6)
+	colorMuted       = walk.RGB(0x9a, 0x91, 0xb8)
+	colorFaint       = walk.RGB(0x6c, 0x64, 0x89)
+
+	// Not part of the brand's two-accent palette (elyos/asmodian carry no
+	// success/warning meaning on the site) — conventional done/action-needed
+	// colors, chosen only to read clearly against colorGround.
+	colorStatusOK   = walk.RGB(0x5f, 0xd9, 0x8a)
+	colorStatusWarn = walk.RGB(0xff, 0x9d, 0x6b)
+)
+
+var (
+	fontUI    = Font{Family: "Inter", PointSize: 9}
+	fontTitle = Font{Family: "Cormorant Garamond", PointSize: 18, SemiBold: true}
+	fontSmall = Font{Family: "Inter", PointSize: 8}
+)
+
 func main() {
 	// walk.InitApp must be the very first walk call (tailscale/walk's own
 	// doc comment on InitApp says so): every widget's layout pass reaches
@@ -77,24 +104,85 @@ func recoverAndReport() {
 	walk.MsgBox(nil, "Aion Theory Sync", msg, walk.MsgBoxIconError)
 }
 
+// statusRow is one line of the onboarding checklist: a small icon (✓ / •)
+// followed by a short description, both recolored by setOK/setPending as
+// the underlying check's result changes — at startup, and again after the
+// member acts (changes the folder, connects, syncs).
+type statusRow struct {
+	icon *walk.Label
+	text *walk.Label
+}
+
+func (r *statusRow) setOK(text string) {
+	r.icon.SetTextColor(colorStatusOK)
+	r.icon.SetText("✓")
+	r.text.SetTextColor(colorTextSoft)
+	r.text.SetText(text)
+}
+
+func (r *statusRow) setPending(text string) {
+	r.icon.SetTextColor(colorStatusWarn)
+	r.icon.SetText("•")
+	r.text.SetTextColor(colorMuted)
+	r.text.SetText(text)
+}
+
+// statusRowWidget declares one onboarding checklist line. The icon and text
+// labels start as placeholders — the caller fills them in with an initial
+// setOK/setPending right after the window is created, so there is no
+// flash of unstyled content.
+func statusRowWidget(row *statusRow, label string, trailing ...Widget) Composite {
+	children := []Widget{
+		Label{AssignTo: &row.icon, Text: "•", MinSize: Size{Width: 16}, Font: fontUI, TextColor: colorMuted},
+		Label{Text: label, MinSize: Size{Width: 170}, Font: fontUI, TextColor: colorTextSoft},
+		Label{AssignTo: &row.text, Text: "…", Font: fontUI, TextColor: colorMuted},
+	}
+	children = append(children, trailing...)
+	children = append(children, HSpacer{})
+	return Composite{
+		Layout:     HBox{MarginsZero: true, Spacing: 8},
+		Background: SolidColorBrush{Color: colorGround},
+		Children:   children,
+	}
+}
+
+// a2ToolsInstalled reports whether A2Tools DPS Meter has ever run on this
+// machine — its own app-data folder (the parent of sync.HistoryDir, the
+// one fixed location it always uses: confirmed by reading a real member's
+// settings.json, which lets the screenshot folder be customized but never
+// the history folder) exists only once A2Tools itself has created it.
+func a2ToolsInstalled() bool {
+	info, err := os.Stat(filepath.Dir(sync.HistoryDir()))
+	return err == nil && info.IsDir()
+}
+
+func folderExists(dir string) bool {
+	info, err := os.Stat(dir)
+	return err == nil && info.IsDir()
+}
+
 func runGUI() {
 	configDir := auth.ConfigDir()
-	saved, _ := settings.Load(configDir)
-	historyDir := saved.HistoryDir
-	if historyDir == "" {
-		historyDir = sync.HistoryDir()
+	current, _ := settings.Load(configDir)
+	if current.HistoryDir == "" {
+		current.HistoryDir = sync.HistoryDir()
 	}
 
+	credential, _ := auth.LoadCredential(configDir)
+	connected := credential != ""
+
 	var mw *walk.MainWindow
-	var folderEdit *walk.LineEdit
 	var statusLabel *walk.Label
 	var logBox *walk.TextEdit
 	var actionButton *walk.PushButton
+	var changeFolderLink *walk.LinkLabel
+	var a2toolsDownloadLink *walk.LinkLabel
+
+	var a2toolsRow, folderRow, accountRow, syncRow statusRow
 
 	// Every background goroutine below touches widgets only through these
-	// three functions, each hopping back onto the UI thread via
-	// Synchronize — walk widgets are not safe to touch from any other
-	// goroutine.
+	// functions, each hopping back onto the UI thread via Synchronize —
+	// walk widgets are not safe to touch from any other goroutine.
 	appendLog := func(line string) {
 		walk.App().Synchronize(func() { logBox.AppendText(line + "\r\n") })
 	}
@@ -104,17 +192,53 @@ func runGUI() {
 	setBusy := func(busy bool) {
 		walk.App().Synchronize(func() {
 			actionButton.SetEnabled(!busy)
-			folderEdit.SetEnabled(!busy)
+			changeFolderLink.SetEnabled(!busy)
 		})
 	}
 
+	refreshA2ToolsRow := func() {
+		if a2ToolsInstalled() {
+			a2toolsRow.setOK("Détecté")
+			a2toolsDownloadLink.SetVisible(false)
+		} else {
+			a2toolsRow.setPending("Introuvable")
+			a2toolsDownloadLink.SetVisible(true)
+		}
+	}
+	refreshFolderRow := func() {
+		if folderExists(current.HistoryDir) {
+			folderRow.setOK(current.HistoryDir)
+		} else {
+			folderRow.setPending("Introuvable : " + current.HistoryDir)
+		}
+	}
+	refreshAccountRow := func(connected bool) {
+		if connected {
+			accountRow.setOK("Connecté")
+		} else {
+			accountRow.setPending("Pas encore connecté")
+		}
+	}
+	refreshSyncRow := func() {
+		if current.LastSyncedAt == "" {
+			syncRow.setPending("Jamais synchronisé")
+			return
+		}
+		t, err := time.Parse(time.RFC3339, current.LastSyncedAt)
+		if err != nil {
+			syncRow.setPending("Jamais synchronisé")
+			return
+		}
+		syncRow.setOK("Dernière synchro : " + t.Local().Format("02/01/2006 15:04"))
+	}
+
 	connectAndSync := func() {
-		dir := strings.TrimSpace(folderEdit.Text())
+		dir := current.HistoryDir
 		if dir == "" {
 			setStatus("Choisissez d'abord le dossier des journaux de combat.")
 			return
 		}
-		if err := settings.Save(configDir, settings.Settings{HistoryDir: dir}); err != nil {
+		if err := settings.Save(configDir, current); err != nil {
 			appendLog("Le dossier choisi n'a pas pu être enregistré : " + err.Error())
 		}
 
@@ -137,6 +261,10 @@ func runGUI() {
 			appendLog("Erreur : " + err.Error())
 			return
 		}
+		walk.App().Synchronize(func() {
+			accountRow.setOK("Connecté")
+			actionButton.SetText("Synchroniser maintenant")
+		})
 
 		setStatus("Synchronisation des combats…")
 		summary, err := sync.Run(ctx, client, credential, dir, out)
@@ -145,6 +273,13 @@ func runGUI() {
 			appendLog("Erreur : " + err.Error())
 			return
 		}
+
+		current.LastSyncedAt = time.Now().UTC().Format(time.RFC3339)
+		if err := settings.Save(configDir, current); err != nil {
+			appendLog("La date de synchronisation n'a pas pu être enregistrée : " + err.Error())
+		}
+		walk.App().Synchronize(refreshSyncRow)
+
 		setStatus("Synchronisé.")
 		appendLog(summary.String())
 	}
@@ -158,46 +293,95 @@ func runGUI() {
 	icon, _ := walk.NewIconFromFile(assetPath("icon.ico"))
 	logo, _ := walk.NewImageFromFile(assetPath("logo.png"))
 
+	actionButtonText := "Se connecter et synchroniser"
+	if connected {
+		actionButtonText = "Synchroniser maintenant"
+	}
+
 	err := MainWindow{
-		AssignTo: &mw,
-		Title:    "Aion Theory Sync",
-		Icon:     icon,
-		MinSize:  Size{Width: 440, Height: 380},
-		Layout:   VBox{},
+		AssignTo:   &mw,
+		Title:      "Aion Theory Sync",
+		Icon:       icon,
+		MinSize:    Size{Width: 480, Height: 480},
+		Background: SolidColorBrush{Color: colorGround},
+		Font:       fontUI,
+		Layout:     VBox{MarginsZero: true, SpacingZero: true},
 		Children: []Widget{
-			ImageView{Image: logo, MinSize: Size{Height: 96}, Mode: ImageViewModeShrink},
-			Label{Text: "Dossier des journaux de combat (A2Tools) :"},
+			// Header band: brand-dark frame around the logo and wordmark,
+			// the one deliberately "designed" element the site's own
+			// colors and serif wordmark font carry over to.
 			Composite{
-				Layout: HBox{MarginsZero: true},
+				Background: SolidColorBrush{Color: colorGroundDeep},
+				Layout:     HBox{Margins: Margins{Left: 20, Top: 14, Right: 20, Bottom: 14}, Spacing: 12},
 				Children: []Widget{
-					LineEdit{AssignTo: &folderEdit, Text: historyDir},
-					PushButton{Text: "Parcourir…", OnClicked: func() {
-						dlg := &walk.FileDialog{Title: "Dossier des journaux de combat", InitialDirPath: folderEdit.Text()}
-						if ok, _ := dlg.ShowBrowseFolder(mw); ok {
-							folderEdit.SetText(dlg.FilePath)
-						}
-					}},
+					ImageView{Image: logo, MinSize: Size{Width: 48, Height: 48}, MaxSize: Size{Width: 48, Height: 48}, Mode: ImageViewModeShrink},
+					Label{Text: "Aion Theory Sync", Font: fontTitle, TextColor: colorText},
+					HSpacer{},
 				},
 			},
-			VSpacer{Size: 8},
-			PushButton{
-				AssignTo: &actionButton,
-				Text:     "Se connecter et synchroniser",
-				OnClicked: func() {
-					go func() {
-						defer recoverAndReport()
-						connectAndSync()
-					}()
+			Composite{
+				Background: SolidColorBrush{Color: colorGround},
+				Layout:     VBox{Margins: Margins{Left: 20, Top: 16, Right: 20, Bottom: 16}, Spacing: 10},
+				Children: []Widget{
+					Label{Text: "ÉTAT", Font: fontSmall, TextColor: colorFaint},
+					statusRowWidget(&a2toolsRow, "DPS Meter A2Tools",
+						LinkLabel{
+							AssignTo: &a2toolsDownloadLink,
+							Text:     `<a id="dl" href="https://a2tools.app">Télécharger</a>`,
+							Font:     fontUI,
+							OnLinkActivated: func(link *walk.LinkLabelLink) {
+								openBrowser(link.URL())
+							},
+						},
+					),
+					statusRowWidget(&folderRow, "Dossier de logs",
+						LinkLabel{
+							AssignTo: &changeFolderLink,
+							Text:     `<a id="change">Changer…</a>`,
+							Font:     fontUI,
+							OnLinkActivated: func(link *walk.LinkLabelLink) {
+								dlg := &walk.FileDialog{Title: "Dossier des journaux de combat", InitialDirPath: current.HistoryDir}
+								if ok, _ := dlg.ShowBrowseFolder(mw); ok {
+									current.HistoryDir = dlg.FilePath
+									if err := settings.Save(configDir, current); err != nil {
+										appendLog("Le dossier choisi n'a pas pu être enregistré : " + err.Error())
+									}
+									refreshFolderRow()
+								}
+							},
+						},
+					),
+					statusRowWidget(&accountRow, "Compte Aion Theory"),
+					statusRowWidget(&syncRow, "Synchronisation"),
+					VSpacer{Size: 6},
+					PushButton{
+						AssignTo: &actionButton,
+						Text:     actionButtonText,
+						OnClicked: func() {
+							go func() {
+								defer recoverAndReport()
+								connectAndSync()
+							}()
+						},
+					},
+					Label{AssignTo: &statusLabel, Text: "Prêt.", Font: fontUI, TextColor: colorTextSoft},
+					HSeparator{},
+					Label{Text: "DÉTAILS TECHNIQUES", Font: fontSmall, TextColor: colorFaint},
+					TextEdit{AssignTo: &logBox, ReadOnly: true, VScroll: true, MinSize: Size{Height: 110}, Font: fontSmall},
 				},
 			},
-			Label{AssignTo: &statusLabel, Text: "Prêt."},
-			TextEdit{AssignTo: &logBox, ReadOnly: true, VScroll: true, MinSize: Size{Height: 140}},
 		},
 	}.Create()
 	if err != nil {
 		walk.MsgBox(nil, "Aion Theory Sync", "La fenêtre n'a pas pu s'ouvrir : "+err.Error(), walk.MsgBoxIconError)
 		return
 	}
+
+	refreshA2ToolsRow()
+	refreshFolderRow()
+	refreshAccountRow(connected)
+	refreshSyncRow()
+
 	mw.SetExitOnClose(true)
 	mw.Show()
 	go func() {

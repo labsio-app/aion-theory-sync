@@ -30,6 +30,22 @@ func TestSaveThenLoad_roundTripsTheChosenFolder(t *testing.T) {
 	}
 }
 
+func TestSaveThenLoad_roundTripsLastSyncedAt(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := Save(dir, Settings{HistoryDir: "history", LastSyncedAt: "2026-10-13T20:45:00Z"}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	s, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if s.LastSyncedAt != "2026-10-13T20:45:00Z" {
+		t.Fatalf("LastSyncedAt = %q, want the saved timestamp", s.LastSyncedAt)
+	}
+}
+
 func TestSave_overwritesAPreviouslySavedFolder(t *testing.T) {
 	dir := t.TempDir()
 
