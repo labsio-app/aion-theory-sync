@@ -21,7 +21,7 @@ jobs:
       # syscall file (internal/auth/protect_windows.go) and the GUI
       # (cmd/gui/main_windows.go) are never compiled on this ubuntu runner
       # at all (review finding F23).
-      - run: go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.7.0 -icon=assets/icon.ico -o=cmd/gui/resource_windows_amd64.syso cmd/gui/versioninfo.json
+      - run: go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.7.0 -icon=assets/icon.ico -manifest=cmd/gui/app.manifest -o=cmd/gui/resource_windows_amd64.syso cmd/gui/versioninfo.json
       - run: GOOS=windows GOARCH=amd64 go build ./...
       - run: GOOS=windows GOARCH=amd64 go vet ./...
 
@@ -40,7 +40,7 @@ jobs:
           go-version: "1.24"
       - name: Embed the icon and version info as a Windows resource
         shell: bash
-        run: go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.7.0 -icon=assets/icon.ico -o=cmd/gui/resource_windows_amd64.syso cmd/gui/versioninfo.json
+        run: go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.7.0 -icon=assets/icon.ico -manifest=cmd/gui/app.manifest -o=cmd/gui/resource_windows_amd64.syso cmd/gui/versioninfo.json
       - name: Build the GUI exe
         run: go build -trimpath -ldflags "-H=windowsgui" -o build\aion-theory-sync-gui.exe ./cmd/gui
       - name: Launch it and confirm it stays open instead of crashing
