@@ -3,9 +3,11 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestOpenDevice_returnsTheGrantTheServerIssued(t *testing.T) {
@@ -92,6 +94,42 @@ func TestUploadCombatLog_401And413BecomeNamedErrors(t *testing.T) {
 		if err != c.wantErr {
 			t.Fatalf("status %d: err = %v, want %v", c.status, err, c.wantErr)
 		}
+	}
+}
+
+func TestUploadCombatLog_429BecomesARateLimitedErrorCarryingRetryAfter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	_, err := New(server.URL).UploadCombatLog(context.Background(), "x", []byte("y"))
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("err = %v, want it to wrap ErrRateLimited", err)
+	}
+	var rl *RateLimitedError
+	if !errors.As(err, &rl) {
+		t.Fatalf("err = %v, want a *RateLimitedError", err)
+	}
+	if rl.RetryAfter != 30*time.Second {
+		t.Fatalf("RetryAfter = %v, want 30s", rl.RetryAfter)
+	}
+}
+
+func TestUploadCombatLog_429WithNoRetryAfterHeaderLeavesItZero(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	_, err := New(server.URL).UploadCombatLog(context.Background(), "x", []byte("y"))
+	var rl *RateLimitedError
+	if !errors.As(err, &rl) {
+		t.Fatalf("err = %v, want a *RateLimitedError", err)
+	}
+	if rl.RetryAfter != 0 {
+		t.Fatalf("RetryAfter = %v, want 0", rl.RetryAfter)
 	}
 }
 

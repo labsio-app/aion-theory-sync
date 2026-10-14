@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -20,7 +21,46 @@ var (
 	ErrNotFound     = errors.New("the device grant is not known to the server")
 	ErrAlreadyUsed  = errors.New("the device code was already used")
 	ErrTooLarge     = errors.New("the combat log is larger than the server accepts")
+
+	// ErrRateLimited is what errors.Is sees under a RateLimitedError — a
+	// bulk first sync can be hundreds of uploads back to back, and the
+	// server is within its rights to 429 that; the caller branches on
+	// this the same way it does on ErrUnauthorized, then backs off using
+	// the RetryAfter the error carries.
+	ErrRateLimited = errors.New("rate limited by the server")
 )
+
+// RateLimitedError is what UploadCombatLog returns for a 429. RetryAfter is
+// the server's own Retry-After header, parsed to a time.Duration; it is 0
+// when the server sent none or sent something unparseable, in which case
+// the caller is expected to fall back to its own default backoff.
+type RateLimitedError struct {
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitedError) Error() string {
+	if e.RetryAfter > 0 {
+		return fmt.Sprintf("rate limited by the server, retry after %v", e.RetryAfter)
+	}
+	return "rate limited by the server"
+}
+
+func (e *RateLimitedError) Unwrap() error { return ErrRateLimited }
+
+// parseRetryAfter reads a Retry-After header value in the delay-seconds
+// form (the only form this platform is known to send); an HTTP-date value
+// or an empty/malformed header both yield 0, matched by RateLimitedError's
+// doc comment above.
+func parseRetryAfter(header string) time.Duration {
+	if header == "" {
+		return 0
+	}
+	seconds, err := strconv.Atoi(header)
+	if err != nil || seconds < 0 {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
+}
 
 type Client struct {
 	BaseURL string
@@ -119,6 +159,8 @@ func (c *Client) UploadCombatLog(ctx context.Context, credential string, gzipBod
 		return SyncOutcome{}, ErrUnauthorized
 	case http.StatusRequestEntityTooLarge:
 		return SyncOutcome{}, ErrTooLarge
+	case http.StatusTooManyRequests:
+		return SyncOutcome{}, &RateLimitedError{RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
 	}
 	if resp.StatusCode != http.StatusOK {
 		return SyncOutcome{}, fmt.Errorf("unexpected status %d uploading combat log", resp.StatusCode)

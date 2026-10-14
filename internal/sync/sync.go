@@ -12,8 +12,24 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/labsio-app/aion-theory-sync/internal/api"
+)
+
+// basePause and maxPause bound the delay this package waits between
+// uploads. basePause is a proactive throttle: a first sync can be hundreds
+// of files back to back, more than enough to trip a server-side rate
+// limit that an occasional retry run never would. maxPause caps how far a
+// run backs off after a 429 (uploadPause grows from basePause toward it,
+// see Run) so a long Retry-After on one file can't single-handedly blow
+// the caller's context budget across the rest of a large batch.
+//
+// Both are vars, not consts, so tests can shrink them instead of actually
+// sleeping real wall-clock time.
+var (
+	basePause = 200 * time.Millisecond
+	maxPause  = 5 * time.Second
 )
 
 // reasonSentences turns the platform's machine codes into the sentence a
@@ -101,6 +117,10 @@ func Run(ctx context.Context, client *api.Client, credential, historyDir string,
 		return summary, fmt.Errorf("scanning %s: %w", historyDir, err)
 	}
 
+	// Grows past basePause only after a 429 (see below), and never past
+	// maxPause — a plain proactive throttle the rest of the time.
+	pause := basePause
+
 	for _, file := range files {
 		raw, err := os.ReadFile(file)
 		if err != nil {
@@ -122,6 +142,10 @@ func Run(ctx context.Context, client *api.Client, credential, historyDir string,
 			continue
 		}
 
+		if err := sleepCtx(ctx, pause); err != nil {
+			return summary, err
+		}
+
 		outcome, err := client.UploadCombatLog(ctx, credential, gzipped)
 		if err != nil {
 			// A revoked/expired credential mid-batch is not a per-file
@@ -131,6 +155,26 @@ func Run(ctx context.Context, client *api.Client, credential, historyDir string,
 			if errors.Is(err, api.ErrUnauthorized) {
 				return summary, err
 			}
+
+			var rl *api.RateLimitedError
+			if errors.As(err, &rl) {
+				// The server is telling the whole batch to slow down,
+				// not just complaining about this one file: grow the
+				// pause used for every upload still to come, instead of
+				// retrying this file inline and hammering the same limit
+				// again immediately. A fresh Run (the existing "retry by
+				// running again" path, already relied on for ordinary
+				// failures) picks this file back up.
+				next := pause * 2
+				if rl.RetryAfter > next {
+					next = rl.RetryAfter
+				}
+				if next > maxPause {
+					next = maxPause
+				}
+				pause = next
+			}
+
 			fmt.Fprintf(out, "%s: upload failed (%v)\n", filepath.Base(file), err)
 			summary.Failed++
 			continue
@@ -152,6 +196,23 @@ func Run(ctx context.Context, client *api.Client, credential, historyDir string,
 	}
 
 	return summary, nil
+}
+
+// sleepCtx pauses for d, or returns ctx's error early if it's cancelled
+// first — so a very long Retry-After can't outlast the caller's own
+// timeout (runTimeout in cmd/gui) silently.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 func gzipBytes(raw []byte) ([]byte, error) {

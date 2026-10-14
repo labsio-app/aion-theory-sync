@@ -12,9 +12,19 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/labsio-app/aion-theory-sync/internal/api"
 )
+
+// TestMain shrinks the real inter-upload pacing to near-zero for the whole
+// package's test run — every test here uploads against an in-process
+// httptest server, so there is nothing for basePause to protect against,
+// only real wall-clock time to waste.
+func TestMain(m *testing.M) {
+	basePause, maxPause = time.Millisecond, 5*time.Millisecond
+	os.Exit(m.Run())
+}
 
 func copyFixtureInto(t *testing.T, dir, name string) {
 	t.Helper()
@@ -205,5 +215,45 @@ func TestRun_stopsTheBatchOnARevokedCredentialInsteadOfFailingEveryRemainingFile
 	}
 	if summary.Failed != 0 {
 		t.Fatalf("Failed = %d, want 0: a revoked credential stops the batch, it is not a per-file failure", summary.Failed)
+	}
+}
+
+func TestRun_aRateLimitOnOneFileDoesNotStopTheRestOfTheBatch(t *testing.T) {
+	historyDir := t.TempDir()
+	copyFixtureInto(t, historyDir, "combat-sample.json")
+	copyFixtureInto(t, historyDir, "combat-sample-2.json")
+
+	uploads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/sync/combat-logs/ids":
+			json.NewEncoder(w).Encode(map[string][]string{"meterLogIds": {}})
+		case r.URL.Path == "/api/sync/combat-logs":
+			uploads++
+			if uploads == 1 {
+				// A bulk first sync is hundreds of uploads back to back —
+				// exactly the kind of burst that trips a server-side
+				// rate limit.
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			json.NewEncoder(w).Encode(api.SyncOutcome{Kind: "RECORDED"})
+		}
+	}))
+	defer server.Close()
+
+	var out strings.Builder
+	summary, err := Run(context.Background(), api.New(server.URL), "credential", historyDir, &out)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if summary.Failed != 1 {
+		t.Fatalf("Failed = %d, want 1 (the rate-limited file)", summary.Failed)
+	}
+	if summary.Recorded != 1 {
+		t.Fatalf("Recorded = %d, want 1: the rest of the batch should still go through", summary.Recorded)
+	}
+	if !strings.Contains(out.String(), "rate limited") {
+		t.Fatalf("output = %q, want it to mention the rate limit", out.String())
 	}
 }
