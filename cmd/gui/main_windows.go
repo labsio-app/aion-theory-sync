@@ -173,6 +173,7 @@ func runGUI() {
 
 	var mw *walk.MainWindow
 	var statusLabel *walk.Label
+	var progressBar *walk.ProgressBar
 	var logBox *walk.TextEdit
 	var actionButton *walk.PushButton
 	var changeFolderLink *walk.LinkLabel
@@ -310,9 +311,17 @@ func runGUI() {
 			// Header band: brand-dark frame around the logo and wordmark,
 			// the one deliberately "designed" element the site's own
 			// colors and serif wordmark font carry over to.
+			//
+			// MaxSize.Height is load-bearing, not decoration: ImageView in
+			// any non-Ideal Mode (Shrink, here) always reports itself as
+			// vertically greedy (walk's own imageview.go), which propagates
+			// up and makes this whole Composite look greedy to the outer
+			// VBox too — without a cap it silently ate most of the
+			// window's height as dead space below the logo.
 			Composite{
 				Background: SolidColorBrush{Color: colorGroundDeep},
 				Layout:     HBox{Margins: Margins{Left: 20, Top: 14, Right: 20, Bottom: 14}, Spacing: 12},
+				MaxSize:    Size{Height: 80},
 				Children: []Widget{
 					ImageView{Image: logo, MinSize: Size{Width: 48, Height: 48}, MaxSize: Size{Width: 48, Height: 48}, Mode: ImageViewModeShrink},
 					Label{Text: "Aion Theory Sync", Font: fontTitle, TextColor: colorText},
@@ -365,7 +374,15 @@ func runGUI() {
 						},
 					},
 					Label{AssignTo: &statusLabel, Text: "Prêt.", Font: fontUI, TextColor: colorTextSoft},
-					HSeparator{},
+					ProgressBar{AssignTo: &progressBar, Visible: false, MaxValue: 100},
+					// MaxSize.Height is load-bearing: walk's own
+					// separator.go gives a *horizontal* separator the
+					// GreedyVert layout flag (not a typo in our code — it
+					// really is backwards from what the name suggests),
+					// and with no cap it ballooned into most of the
+					// window's leftover height as a lonely line floating
+					// in a sea of dead space.
+					HSeparator{MaxSize: Size{Height: 2}},
 					Label{Text: "DÉTAILS TECHNIQUES", Font: fontSmall, TextColor: colorFaint},
 					TextEdit{AssignTo: &logBox, ReadOnly: true, VScroll: true, MinSize: Size{Height: 110}, Font: fontSmall},
 				},
@@ -386,7 +403,7 @@ func runGUI() {
 	mw.Show()
 	go func() {
 		defer recoverAndReport()
-		checkForUpdate(mw, appendLog, setStatus)
+		checkForUpdate(mw, progressBar, appendLog, setStatus)
 	}()
 	walk.App().Run()
 }
@@ -396,7 +413,7 @@ func runGUI() {
 // skipped -ldflags (ci.yml, a local `go build`), which update.Check
 // always treats as "nothing to check" — so this is a no-op outside a
 // release build installed via Setup.exe or the raw goreleaser binary.
-func checkForUpdate(mw *walk.MainWindow, appendLog func(string), setStatus func(string)) {
+func checkForUpdate(mw *walk.MainWindow, progressBar *walk.ProgressBar, appendLog func(string), setStatus func(string)) {
 	// A leftover from a previous update (see update.Apply) only ever
 	// blocks a future update's own rename dance, never today's launch,
 	// so cleaning it up here (rather than failing anything) is enough.
@@ -424,24 +441,41 @@ func checkForUpdate(mw *walk.MainWindow, appendLog func(string), setStatus func(
 		return
 	}
 
+	walk.App().Synchronize(func() {
+		progressBar.SetValue(0)
+		progressBar.SetVisible(true)
+	})
 	setStatus("Téléchargement de la mise à jour…")
 	// Downloaded exe is typically only a few MB, but a generous timeout
 	// costs nothing on a fast connection and avoids failing a slow one.
 	downloadCtx, cancelDownload := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancelDownload()
 
-	newExePath, err := checker.Download(downloadCtx, available.DownloadURL)
+	newExePath, err := checker.Download(downloadCtx, available.DownloadURL, func(downloaded, total int64) {
+		if total <= 0 {
+			return
+		}
+		percent := int(downloaded * 100 / total)
+		walk.App().Synchronize(func() { progressBar.SetValue(percent) })
+		setStatus(fmt.Sprintf("Téléchargement de la mise à jour… %d %%", percent))
+	})
 	if err != nil {
+		walk.App().Synchronize(func() { progressBar.SetVisible(false) })
 		setStatus("Échec du téléchargement de la mise à jour.")
 		appendLog("Erreur : " + err.Error())
 		return
 	}
+
+	setStatus("Installation de la mise à jour…")
+	walk.App().Synchronize(func() { progressBar.SetValue(100) })
 	if err := update.Apply(newExePath); err != nil {
+		walk.App().Synchronize(func() { progressBar.SetVisible(false) })
 		setStatus("Échec de l'installation de la mise à jour.")
 		appendLog("Erreur : " + err.Error())
 		return
 	}
 	if err := update.Relaunch(); err != nil {
+		walk.App().Synchronize(func() { progressBar.SetVisible(false) })
 		setStatus("Mise à jour installée, mais le redémarrage a échoué.")
 		appendLog("Relancez l'application manuellement. Erreur : " + err.Error())
 		return

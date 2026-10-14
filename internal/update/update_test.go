@@ -3,8 +3,11 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -88,6 +91,62 @@ func TestCheck_errorsWhenTheNewerReleaseHasNoMatchingAsset(t *testing.T) {
 	_, err := checkerAgainst(server).Check(context.Background(), "v0.2.0")
 	if err == nil {
 		t.Fatal("Check: want an error for a release with no gui asset")
+	}
+}
+
+func TestDownload_reportsProgressUpToTheFullSize(t *testing.T) {
+	const body = "this is a fake update exe, just needs a known length"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, body)
+	}))
+	defer server.Close()
+
+	var calls []int64
+	dest, err := checkerAgainst(server).Download(context.Background(), server.URL, func(downloaded, total int64) {
+		calls = append(calls, downloaded)
+		if total != int64(len(body)) {
+			t.Errorf("total = %d, want %d", total, len(body))
+		}
+	})
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	defer os.Remove(dest)
+
+	if len(calls) == 0 {
+		t.Fatal("onProgress was never called")
+	}
+	if got := calls[len(calls)-1]; got != int64(len(body)) {
+		t.Fatalf("final downloaded = %d, want %d", got, len(body))
+	}
+
+	raw, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", dest, err)
+	}
+	if string(raw) != body {
+		t.Fatalf("downloaded content = %q, want %q", raw, body)
+	}
+}
+
+func TestDownload_worksWithoutAnOnProgressCallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "fake exe")
+	}))
+	defer server.Close()
+
+	dest, err := checkerAgainst(server).Download(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	defer os.Remove(dest)
+
+	raw, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", dest, err)
+	}
+	if !strings.Contains(string(raw), "fake exe") {
+		t.Fatalf("downloaded content = %q", raw)
 	}
 }
 

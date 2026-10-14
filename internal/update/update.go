@@ -108,7 +108,13 @@ func (c *Checker) Check(ctx context.Context, currentVersion string) (*Available,
 // Download streams url to a new file next to the running exe, named after
 // it with ".update.exe" appended — kept on the same volume as the running
 // exe so the rename in Apply can't fail across filesystems.
-func (c *Checker) Download(ctx context.Context, url string) (string, error) {
+//
+// onProgress, if not nil, is called after every chunk read with the bytes
+// copied so far and the total from the response's Content-Length — the
+// GUI's one hook for an actual progress bar instead of a static "please
+// wait" message. total is <= 0 when the server didn't report a length;
+// the caller should fall back to an indeterminate indicator in that case.
+func (c *Checker) Download(ctx context.Context, url string, onProgress func(downloaded, total int64)) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", err
@@ -132,7 +138,13 @@ func (c *Checker) Download(ctx context.Context, url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if _, err := io.Copy(f, resp.Body); err != nil {
+
+	var body io.Reader = resp.Body
+	if onProgress != nil {
+		body = &progressReader{r: resp.Body, total: resp.ContentLength, onProgress: onProgress}
+	}
+
+	if _, err := io.Copy(f, body); err != nil {
 		f.Close()
 		os.Remove(dest)
 		return "", err
@@ -142,6 +154,23 @@ func (c *Checker) Download(ctx context.Context, url string) (string, error) {
 		return "", err
 	}
 	return dest, nil
+}
+
+// progressReader reports cumulative bytes read after every underlying
+// Read, piggybacking on io.Copy's own chunking instead of introducing a
+// second buffering pass just to observe the byte count.
+type progressReader struct {
+	r          io.Reader
+	total      int64
+	downloaded int64
+	onProgress func(downloaded, total int64)
+}
+
+func (p *progressReader) Read(buf []byte) (int, error) {
+	n, err := p.r.Read(buf)
+	p.downloaded += int64(n)
+	p.onProgress(p.downloaded, p.total)
+	return n, err
 }
 
 // Apply swaps the freshly downloaded exe (newExePath, from Download) in
