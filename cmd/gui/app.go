@@ -60,6 +60,9 @@ type app struct {
 	a2toolsLogo walk.Image
 
 	updateAvailable bool
+
+	tray    *walk.NotifyIcon
+	watcher *folderWatcher
 }
 
 func runApp(startMinimized bool) {
@@ -129,8 +132,16 @@ func runApp(startMinimized bool) {
 
 	enableDarkTitleBar(a.mw.Handle())
 	a.mw.SetExitOnClose(true)
+	a.mw.Closing().Attach(a.onWindowClosing)
+	a.setupTray()
+	if a.settings.AutoSync {
+		a.startAutoSync()
+	}
+
 	a.render()
-	a.mw.Show()
+	if !startMinimized || a.tray == nil {
+		a.mw.Show()
+	}
 
 	go func() {
 		defer recoverAndReport()
@@ -144,7 +155,6 @@ func runApp(startMinimized bool) {
 		})
 	}()
 
-	_ = startMinimized // the tray (delivery step 5) is what will act on this
 	walk.App().Run()
 }
 
@@ -207,6 +217,16 @@ func (a *app) saveSettings() {
 	}
 }
 
+func (a *app) onToggleAutoSync(checked bool) {
+	a.settings.AutoSync = checked
+	a.saveSettings()
+	if checked {
+		a.startAutoSync()
+	} else {
+		a.stopAutoSync()
+	}
+}
+
 func (a *app) applyAutostart() {
 	var err error
 	if a.settings.LaunchAtStartup {
@@ -258,10 +278,14 @@ func (a *app) onLinkRequested() {
 			// UX spec's "activé par défaut"); applied here rather than in
 			// settings.Load so an existing settings.json keeps whatever
 			// the member already chose.
-			a.settings.LaunchAtStartup = true
-			a.settings.AutoSync = true
+			defaults := settings.OnboardingDefaults()
+			a.settings.LaunchAtStartup = defaults.LaunchAtStartup
+			a.settings.AutoSync = defaults.AutoSync
 			a.applyAutostart()
 			a.saveSettings()
+			if a.settings.AutoSync {
+				a.startAutoSync()
+			}
 			a.render()
 			a.refreshPrereqs(false)
 		})
@@ -438,7 +462,9 @@ func (a *app) onUnlink() {
 	_ = auth.ClearCredential(a.configDir)
 	a.credential = ""
 	_ = a.autoStart.Disable()
+	a.stopAutoSync()
 	a.settings.LaunchAtStartup = false
+	a.settings.AutoSync = false
 	a.saveSettings()
 	a.machine.UnlinkRequested()
 	a.render()

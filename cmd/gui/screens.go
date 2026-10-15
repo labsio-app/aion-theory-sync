@@ -148,10 +148,7 @@ func (a *app) screen2(v state.PrerequisitesView) []Widget {
 			a.applyAutostart()
 			a.saveSettings()
 		}),
-		toggleRow(v.AutoSyncLabel, a.settings.AutoSync, func(checked bool) {
-			a.settings.AutoSync = checked
-			a.saveSettings()
-		}),
+		toggleRow(v.AutoSyncLabel, a.settings.AutoSync, a.onToggleAutoSync),
 		VSpacer{},
 		Composite{
 			Layout:     HBox{MarginsZero: true},
@@ -403,10 +400,7 @@ func (a *app) screen8() []Widget {
 		}),
 		VSpacer{Size: 12},
 		sectionHeader("SYNCHRONISATION"),
-		toggleRow("Envoyer automatiquement les nouveaux combats", a.settings.AutoSync, func(checked bool) {
-			a.settings.AutoSync = checked
-			a.saveSettings()
-		}),
+		toggleRow("Envoyer automatiquement les nouveaux combats", a.settings.AutoSync, a.onToggleAutoSync),
 		HSeparator{MaxSize: Size{Height: 1}, Background: solid(colorSeparator)},
 		settingsLinkRow(a.a2toolsLogo, folderLabel, "Modifier", func() { a.onChooseFolder(false) }),
 		VSpacer{Size: 12},
