@@ -55,6 +55,7 @@ Source: "..\build\aion-theory-sync-gui.exe"; DestDir: "{app}"; Flags: ignorevers
 Source: "..\build\aion-theory-sync.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\assets\icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "..\assets\logo.png"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "..\assets\a2tools.png"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -62,6 +63,15 @@ Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\icon.ico"; Tasks: desktopicon
+
+[Registry]
+; The app itself (internal/autostart), not this installer, creates this
+; value when a member turns on "Lancer au démarrage de Windows" -
+; ValueType: none means Setup never writes it, only tracks it so
+; uninsdeletevalue removes it (if present) when the app is uninstalled,
+; matching the per-user (HKCU), no-admin-prompt install this installer
+; already does (PrivilegesRequired=lowest).
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "AionTheorySync"; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent

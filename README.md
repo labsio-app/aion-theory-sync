@@ -26,24 +26,34 @@ sont attachées à votre personnage déclaré.
    [dernière version](https://github.com/labsio-app/aion-theory-sync/releases/latest)
    et installez-le — un dossier d'installation, un raccourci dans le menu
    Démarrer et, si vous le cochez, sur le bureau.
-2. Au premier lancement, choisissez (ou laissez la valeur par défaut) le
-   dossier d'historique du DPS meter, puis cliquez sur « Se connecter et
-   synchroniser ». Un code s'affiche et le navigateur s'ouvre sur Aion
-   Theory : connectez-vous, saisissez le code. L'outil est alors lié à
-   votre compte — il ne voit jamais votre mot de passe, seulement une
-   habilitation révocable que vous pouvez retirer à tout moment depuis
-   votre page de compte.
-3. Chaque clic sur « Se connecter et synchroniser » envoie les combats pas
-   encore synchronisés. La synchronisation est idempotente : un nouveau
-   lancement ne duplique jamais rien, un envoi en échec est retenté sans
+2. Au premier lancement, un parcours guidé vous relie à votre compte : un
+   code s'affiche et le navigateur s'ouvre sur Aion Theory, vous
+   connectez-vous et saisissez le code. L'outil ne voit jamais votre mot
+   de passe, seulement une habilitation révocable que vous pouvez retirer
+   à tout moment depuis votre page de compte ou depuis les paramètres de
+   l'application (« Délier ce PC »).
+3. L'outil vérifie ensuite que le DPS Meter A2Tools est détecté (sinon, il
+   vous laisse indiquer son dossier d'historique une fois) et vous propose
+   de lancer l'application au démarrage de Windows et de synchroniser
+   automatiquement les nouveaux combats — les deux sont activés par
+   défaut, modifiables à tout moment dans les paramètres.
+4. Depuis l'écran principal, « Synchroniser maintenant » envoie les
+   combats pas encore synchronisés. La synchronisation est idempotente :
+   la relancer ne duplique jamais rien, un envoi en échec est retenté sans
    risque, et les journaux d'un personnage déclaré plus tard sont repris
-   au lancement suivant.
+   automatiquement.
 
-Relancez l'application quand vous le souhaitez pour synchroniser vos
-derniers combats — elle ne tourne pas en arrière-plan. À chaque lancement,
-elle vérifie en silence si une version plus récente est publiée et, le cas
-échéant, propose de l'installer en un clic (pas de réouverture du
-navigateur, pas de nouveau téléchargement manuel).
+Avec la synchronisation automatique activée (par défaut), l'application
+surveille en arrière-plan le dossier d'historique du DPS meter et envoie
+les nouveaux combats d'elle-même, quelques secondes après la fin d'un
+combat ; fermer la fenêtre la réduit alors dans la zone de notification
+plutôt que de la quitter (clic sur l'icône, ou menu « Quitter », pour
+fermer réellement). Avec la synchronisation automatique désactivée,
+l'application ne fait rien tant que vous ne cliquez pas sur
+« Synchroniser maintenant ». À chaque lancement, elle vérifie en silence
+si une version plus récente est publiée et, le cas échéant, propose de
+l'installer en un clic (pas de réouverture du navigateur, pas de nouveau
+téléchargement manuel).
 
 > **Windows peut encore afficher un avertissement SmartScreen** au premier
 > lancement (« Éditeur non reconnu ») : l'installeur n'est pas encore signé.
@@ -89,7 +99,10 @@ aucun tiers.
 - Les données de combat proviennent d'un outil tiers (A2Tools) auquel ce
   projet n'est pas affilié ; son usage reste soumis à ses propres conditions
   ainsi qu'aux conditions d'utilisation d'AION 2, que cet outil ne modifie
-  en rien.
+  en rien. L'icône A2Tools affichée dans l'application
+  ([`assets/a2tools.png`](assets/a2tools.png)) est reprise telle quelle du
+  dépôt officiel [`taengu/A2Tools-DPS-Meter`](https://github.com/taengu/A2Tools-DPS-Meter)
+  (`src-tauri/icons/Square142x142Logo.png`).
 - L'habilitation stockée localement par l'outil ne sert qu'à l'envoi des
   journaux de combat — ce n'est pas le mot de passe de votre compte, et la
   perdre ne coûte qu'une révocation et une nouvelle liaison.
@@ -137,20 +150,28 @@ to your declared character.
    [latest release](https://github.com/labsio-app/aion-theory-sync/releases/latest)
    and install it — an install folder, a Start Menu shortcut, and a desktop
    icon if you check that box.
-2. On first launch, pick (or keep the default) DPS meter history folder,
-   then click "Connect and sync". A code appears and your browser opens on
-   Aion Theory: sign in, enter the code. The tool is now linked to your
-   account — it never sees your password, only a revocable credential you
-   can take back any time from your account page.
-3. Every click on "Connect and sync" uploads the combats not yet synced.
-   The sync is idempotent: re-running it never duplicates anything, a
-   failed upload is safely retried, and logs for a character you declare
-   later are picked up by the next run.
+2. On first launch, a guided flow links you to your account: a code
+   appears and your browser opens on Aion Theory, you sign in and enter
+   the code. The tool never sees your password, only a revocable
+   credential you can take back any time from your account page or from
+   the app's own settings ("Délier ce PC").
+3. It then checks that the A2Tools DPS Meter is detected (if not, you can
+   point it at the right history folder once) and offers to launch at
+   Windows startup and auto-sync new combats — both on by default,
+   changeable any time in settings.
+4. From the main screen, "Synchroniser maintenant" uploads the combats not
+   yet synced. The sync is idempotent: re-running it never duplicates
+   anything, a failed upload is safely retried, and logs for a character
+   you declare later are picked up automatically.
 
-Run it again whenever you want your latest combats synced — there is no
-background watcher in this version. On every launch it quietly checks
-whether a newer version was published and, if so, offers to install it in
-one click — no browser, no manual re-download.
+With auto-sync on (the default), the app watches the DPS meter's history
+folder in the background and uploads new combats on its own, a few
+seconds after a fight ends; closing the window then minimizes it to the
+notification area instead of quitting (click the icon, or its "Quitter"
+menu entry, to actually close it). With auto-sync off, the app does
+nothing until you click "Synchroniser maintenant". On every launch it
+quietly checks whether a newer version was published and, if so, offers
+to install it in one click — no browser, no manual re-download.
 
 > **Windows may still show a SmartScreen warning** ("Unrecognized
 > publisher") on first launch: the installer is not signed yet. See
@@ -193,7 +214,11 @@ The only network call this tool ever makes is to the `-server` address above
   `-relink`.
 - The combat data comes from a third-party tool (A2Tools) that this project
   is not affiliated with; using it remains subject to A2Tools' own terms and
-  to AION 2's terms of service, which this tool does not alter.
+  to AION 2's terms of service, which this tool does not alter. The A2Tools
+  icon shown in the app ([`assets/a2tools.png`](assets/a2tools.png)) is
+  taken as-is from the official
+  [`taengu/A2Tools-DPS-Meter`](https://github.com/taengu/A2Tools-DPS-Meter)
+  repository (`src-tauri/icons/Square142x142Logo.png`).
 - The credential this tool stores locally is scoped to uploading combat logs
   only — it is not your account password, and losing it only costs a revoke
   and a re-link.
