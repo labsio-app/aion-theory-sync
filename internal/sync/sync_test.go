@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -361,6 +362,65 @@ func TestRunWithProgress_reportsARateLimitedEvent(t *testing.T) {
 	// TestMain shrinks to 2ms for this whole package's test run.
 	if rateLimitedEvents[0].RateLimited != 3*time.Second {
 		t.Fatalf("RateLimited = %v, want 3s (the server's Retry-After)", rateLimitedEvents[0].RateLimited)
+	}
+}
+
+func TestRunWithOptions_waitsWhilePausedThenUploads(t *testing.T) {
+	originalInterval := pausePollInterval
+	pausePollInterval = time.Millisecond
+	t.Cleanup(func() { pausePollInterval = originalInterval })
+
+	historyDir := t.TempDir()
+	copyFixtureInto(t, historyDir, "combat-sample.json")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/sync/combat-logs/ids":
+			json.NewEncoder(w).Encode(map[string][]string{"meterLogIds": {}})
+		case r.URL.Path == "/api/sync/combat-logs":
+			json.NewEncoder(w).Encode(api.SyncOutcome{Kind: "RECORDED"})
+		}
+	}))
+	defer server.Close()
+
+	var checks atomic.Int32
+	paused := func() bool { return checks.Add(1) <= 5 } // paused for a handful of polls, then resumes
+
+	var out strings.Builder
+	summary, err := RunWithOptions(context.Background(), api.New(server.URL), "credential", historyDir, &out,
+		Options{Paused: paused})
+	if err != nil {
+		t.Fatalf("RunWithOptions: %v", err)
+	}
+	if summary.Recorded != 1 {
+		t.Fatalf("Recorded = %d, want 1 (pausing must not drop the file)", summary.Recorded)
+	}
+	if checks.Load() < 6 {
+		t.Fatalf("paused was checked %d times, want at least 6 (5 paused + 1 to notice it stopped)", checks.Load())
+	}
+}
+
+func TestRunWithOptions_pausedForeverStopsOnContextCancellation(t *testing.T) {
+	originalInterval := pausePollInterval
+	pausePollInterval = time.Millisecond
+	t.Cleanup(func() { pausePollInterval = originalInterval })
+
+	historyDir := t.TempDir()
+	copyFixtureInto(t, historyDir, "combat-sample.json")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string][]string{"meterLogIds": {}})
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	var out strings.Builder
+	_, err := RunWithOptions(ctx, api.New(server.URL), "credential", historyDir, &out,
+		Options{Paused: func() bool { return true }})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
 }
 

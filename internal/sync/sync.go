@@ -128,13 +128,32 @@ type ProgressEvent struct {
 // in order, on the same goroutine that called it.
 type ProgressFunc func(ProgressEvent)
 
+// Options configures RunWithOptions. The zero value matches Run's plain
+// behavior: no progress callback, never paused.
+type Options struct {
+	// OnProgress, if set, receives every ProgressEvent as RunWithOptions
+	// goes (see ProgressEvent's doc comment).
+	OnProgress ProgressFunc
+
+	// Paused, if set, is polled before every file: RunWithOptions waits
+	// (checking ctx for cancellation every pausePollInterval) for as long
+	// as it reports true. This is screen 4's "Mettre en pause" — a local,
+	// cooperative pause the GUI drives, not a server-requested one (that's
+	// RateLimited, which never waits on this).
+	Paused func() bool
+}
+
+// pausePollInterval bounds how long a paused RunWithOptions call can take
+// to notice ctx was cancelled. A var, not a const, so tests can shrink it.
+var pausePollInterval = 200 * time.Millisecond
+
 // Run uploads every history file whose meter log id is not already in
 // knownIDs. The tool keeps no state of its own (F3/D9): knownIDs comes from
 // the server on every run, so a retry or a restore never duplicates
 // anything and a file for a character declared later is picked up as soon
 // as it is re-offered.
 func Run(ctx context.Context, client *api.Client, credential, historyDir string, out io.Writer) (Summary, error) {
-	return RunWithProgress(ctx, client, credential, historyDir, out, nil)
+	return RunWithOptions(ctx, client, credential, historyDir, out, Options{})
 }
 
 // RunWithProgress is Run, but also reports structured progress through
@@ -142,6 +161,13 @@ func Run(ctx context.Context, client *api.Client, credential, historyDir string,
 // progress ring, current-file line and rate-limit countdown without
 // having to parse out's plain-text lines. onProgress may be nil.
 func RunWithProgress(ctx context.Context, client *api.Client, credential, historyDir string, out io.Writer, onProgress ProgressFunc) (Summary, error) {
+	return RunWithOptions(ctx, client, credential, historyDir, out, Options{OnProgress: onProgress})
+}
+
+// RunWithOptions is Run with every optional behavior (progress reporting,
+// pausing) spelled out in opts.
+func RunWithOptions(ctx context.Context, client *api.Client, credential, historyDir string, out io.Writer, opts Options) (Summary, error) {
+	onProgress := opts.OnProgress
 	if onProgress == nil {
 		onProgress = func(ProgressEvent) {}
 	}
@@ -163,6 +189,10 @@ func RunWithProgress(ctx context.Context, client *api.Client, credential, histor
 	pause := basePause
 
 	for i, file := range files {
+		if err := waitWhilePaused(ctx, opts.Paused); err != nil {
+			return summary, err
+		}
+
 		raw, err := os.ReadFile(file)
 		if err != nil {
 			fmt.Fprintf(out, "%s: could not read (%v)\n", filepath.Base(file), err)
@@ -242,6 +272,21 @@ func RunWithProgress(ctx context.Context, client *api.Client, credential, histor
 
 	onProgress(ProgressEvent{Total: len(files), Done: len(files)})
 	return summary, nil
+}
+
+// waitWhilePaused blocks for as long as paused reports true, rechecking
+// every pausePollInterval so a cancelled ctx is noticed promptly rather
+// than only once the member resumes.
+func waitWhilePaused(ctx context.Context, paused func() bool) error {
+	if paused == nil {
+		return nil
+	}
+	for paused() {
+		if err := sleepCtx(ctx, pausePollInterval); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func fileProgress(parsed meterLogID) FileProgress {
