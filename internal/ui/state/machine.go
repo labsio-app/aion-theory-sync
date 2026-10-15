@@ -39,12 +39,13 @@ type Machine struct {
 	ExpiredBanner bool // screen 0: "Le code a expiré. Relance la liaison."
 	RevokedBanner bool // screen 0: shown after a 401 mid-sync
 
-	// LastSyncedAt and Paused are set directly by cmd/gui rather than
-	// through an event method: neither has a dedicated event in the UX
+	// LastSyncedAt, Paused and Character are set directly by cmd/gui rather
+	// than through an event method: none has a dedicated event in the UX
 	// spec's vocabulary (LastSyncedAt mirrors settings.Settings'
 	// LastSyncedAt; pausing a running upload loop is a local toggle on the
-	// Syncing screen, not a transition between screens) - the same
-	// deliberate boundary DeriveIdleState documents for "Fermer".
+	// Syncing screen, not a transition between screens; Character is a
+	// best-effort background refresh, not tied to any screen change) - the
+	// same deliberate boundary DeriveIdleState documents for "Fermer".
 	LastSyncedAt time.Time
 	Paused       bool
 }

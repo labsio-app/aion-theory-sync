@@ -131,6 +131,33 @@ func (c *Client) RecordedMeterLogIDs(ctx context.Context, credential string) (ma
 	return ids, nil
 }
 
+// Character is one of the member's declared, ACTIVE characters, as listed
+// by GET /api/sync/characters. Server is empty when the server's own
+// resolution of it failed — the endpoint sends serverName: null for that
+// case, which json.Decode leaves as the zero value here.
+type Character struct {
+	CharacterID   string `json:"characterId"`
+	CharacterName string `json:"characterName"`
+	ServerName    string `json:"serverName"`
+}
+
+// Characters lists the member's declared, active characters:
+// GET /api/sync/characters. ErrNotFound surfaces when the server's combat
+// log sync feature is disabled, same as the other sync routes.
+func (c *Client) Characters(ctx context.Context, credential string) ([]Character, error) {
+	var payload struct {
+		Characters []Character `json:"characters"`
+	}
+	status, err := c.do(ctx, http.MethodGet, "/api/sync/characters", credential, nil, &payload)
+	if err != nil {
+		if status == http.StatusNotFound {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return payload.Characters, nil
+}
+
 type SyncOutcome struct {
 	Kind        string `json:"kind"`
 	CombatLogID string `json:"combatLogId,omitempty"`

@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -79,7 +80,7 @@ type PrerequisitesView struct {
 	Title                string
 	AccountCard          PrereqCard
 	DPSMeterCard         PrereqCard
-	CharacterVisible     bool // always false until the server exposes declared characters; see CharacterInfo
+	CharacterCard        PrereqCard
 	LaunchAtStartupLabel string
 	AutoSyncLabel        string
 	FinishButton         string
@@ -148,6 +149,12 @@ type ViewModel struct {
 	Screen  State
 	Stepper []StepperStep // populated only for the three gabarit A screens
 
+	// CharacterKnown/CharacterSummary mirror Machine.Character, formatted
+	// once here so gabarit B's sidebar (shown next to every screen below,
+	// not just one) never has to format a character list itself.
+	CharacterKnown   bool
+	CharacterSummary string
+
 	Unlinked      UnlinkedView
 	Linking       LinkingView
 	Prerequisites PrerequisitesView
@@ -162,7 +169,11 @@ type ViewModel struct {
 // countdown (grant expiry, rate-limit retry) so the result stays a pure
 // function of its inputs instead of reading the wall clock itself.
 func BuildViewModel(m *Machine, now time.Time) ViewModel {
-	vm := ViewModel{Screen: m.Current}
+	vm := ViewModel{
+		Screen:           m.Current,
+		CharacterKnown:   m.Character.Known,
+		CharacterSummary: characterSummary(m.Character.Characters),
+	}
 
 	switch m.Current {
 	case Unlinked:
@@ -246,11 +257,25 @@ func buildPrerequisitesView(m *Machine) PrerequisitesView {
 		meterCard.ActionURL = "https://a2tools.app"
 	}
 
+	characterCard := PrereqCard{Title: "Personnage déclaré"}
+	if m.Character.Known {
+		characterCard.Done = true
+		characterCard.Subtitle = characterSummary(m.Character.Characters)
+	} else {
+		// Not spec-literal: the server endpoint only shipped after this
+		// screen's copy was written, so the empty-state wording and its
+		// action (cmd/gui opens the member's Aion Theory account, see
+		// screens.go) are this package's own choice, not quoted from the
+		// UX spec.
+		characterCard.Subtitle = "Aucun personnage déclaré"
+		characterCard.ActionLabel = "Déclarer un personnage ↗"
+	}
+
 	return PrerequisitesView{
 		Title:                "Pré-requis",
 		AccountCard:          accountCard,
 		DPSMeterCard:         meterCard,
-		CharacterVisible:     false,
+		CharacterCard:        characterCard,
 		LaunchAtStartupLabel: "Lancer au démarrage de Windows",
 		AutoSyncLabel:        "Synchroniser automatiquement les nouveaux combats",
 		FinishButton:         "Terminer",
@@ -323,7 +348,10 @@ func buildDoneView(m *Machine) DoneView {
 	}
 	if m.Character.Known {
 		view.SubtitleVisible = true
-		view.Subtitle = "Rattachés à " + m.Character.Name
+		// Spec-literal for the single-character case ("Rattachés à
+		// [Nom]"); several declared characters is this package's own
+		// extension, joined rather than picking one arbitrarily.
+		view.Subtitle = "Rattachés à " + characterSummary(m.Character.Characters)
 	}
 	if s.NoMatchingCharacter > 0 {
 		view.FollowupVisible = true
@@ -377,6 +405,21 @@ func buildBlockedView(m *Machine) BlockedView {
 			TechnicalLogLink: "Journal technique",
 		}
 	}
+}
+
+// characterSummary formats a member's declared characters as "Yume · Siel"
+// (server omitted when the server couldn't resolve it), joining several
+// with ", ". Empty when chars is empty.
+func characterSummary(chars []Character) string {
+	parts := make([]string, len(chars))
+	for i, c := range chars {
+		if c.Server != "" {
+			parts[i] = c.Name + " · " + c.Server
+		} else {
+			parts[i] = c.Name
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 func lastSyncedLabel(lastSyncedAt time.Time, now time.Time) string {

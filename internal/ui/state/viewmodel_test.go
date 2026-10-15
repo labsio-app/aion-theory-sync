@@ -93,8 +93,41 @@ func TestBuildViewModel_prerequisitesWithTheMeterFound(t *testing.T) {
 	if !vm.Prerequisites.FinishEnabled {
 		t.Fatal("FinishEnabled = false with the meter found")
 	}
-	if vm.Prerequisites.CharacterVisible {
-		t.Fatal("CharacterVisible = true, want it hidden (no characters endpoint yet)")
+	if vm.Prerequisites.CharacterCard.Done {
+		t.Fatal("CharacterCard.Done = true, want false with no declared character known")
+	}
+	if vm.Prerequisites.CharacterCard.Subtitle != "Aucun personnage déclaré" {
+		t.Fatalf("CharacterCard.Subtitle = %q", vm.Prerequisites.CharacterCard.Subtitle)
+	}
+}
+
+func TestBuildViewModel_prerequisitesWithACharacterKnown(t *testing.T) {
+	m := NewMachine(Prerequisites)
+	m.DPSMeter = DPSMeterInfo{Found: true}
+	m.Character = CharacterInfo{Known: true, Characters: []Character{{Name: "Yume", Server: "Siel"}}}
+
+	vm := BuildViewModel(m, time.Now())
+	if !vm.Prerequisites.CharacterCard.Done {
+		t.Fatal("CharacterCard.Done = false, want true with a declared character known")
+	}
+	if vm.Prerequisites.CharacterCard.Subtitle != "Yume · Siel" {
+		t.Fatalf("CharacterCard.Subtitle = %q", vm.Prerequisites.CharacterCard.Subtitle)
+	}
+	if !vm.CharacterKnown || vm.CharacterSummary != "Yume · Siel" {
+		t.Fatalf("CharacterKnown/CharacterSummary = %v/%q", vm.CharacterKnown, vm.CharacterSummary)
+	}
+}
+
+func TestBuildViewModel_characterSummaryJoinsSeveralCharacters(t *testing.T) {
+	m := NewMachine(Prerequisites)
+	m.Character = CharacterInfo{Known: true, Characters: []Character{
+		{Name: "Yume", Server: "Siel"},
+		{Name: "Lira"}, // server unresolved: serverName was null
+	}}
+
+	vm := BuildViewModel(m, time.Now())
+	if vm.CharacterSummary != "Yume · Siel, Lira" {
+		t.Fatalf("CharacterSummary = %q", vm.CharacterSummary)
 	}
 }
 
@@ -218,7 +251,23 @@ func TestBuildViewModel_doneSummarizesEveryTile(t *testing.T) {
 		t.Fatalf("FailedBannerText = %q (visible=%v)", vm.Done.FailedBannerText, vm.Done.FailedBannerVisible)
 	}
 	if vm.Done.SubtitleVisible {
-		t.Fatal("SubtitleVisible = true, want it hidden (no declared-character name available)")
+		t.Fatal("SubtitleVisible = true, want it hidden (no declared-character name known)")
+	}
+}
+
+func TestBuildViewModel_doneShowsTheSubtitleWithACharacterKnown(t *testing.T) {
+	m := NewMachine(Syncing)
+	if err := m.SyncFinished(sync.Summary{Recorded: 2}, 0); err != nil {
+		t.Fatalf("SyncFinished: %v", err)
+	}
+	m.Character = CharacterInfo{Known: true, Characters: []Character{{Name: "Yume", Server: "Siel"}}}
+
+	vm := BuildViewModel(m, time.Now())
+	if !vm.Done.SubtitleVisible {
+		t.Fatal("SubtitleVisible = false, want true with a declared character known")
+	}
+	if vm.Done.Subtitle != "Rattachés à Yume · Siel" {
+		t.Fatalf("Subtitle = %q", vm.Done.Subtitle)
 	}
 }
 

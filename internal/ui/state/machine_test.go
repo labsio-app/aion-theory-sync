@@ -210,7 +210,7 @@ func TestMachine_retryingFromBlockedCanReachReadyOrUpToDate(t *testing.T) {
 func TestMachine_unlinkRequestedResetsEverything(t *testing.T) {
 	m := NewMachine(Done)
 	m.Summary = SummaryInfo{Recorded: 5}
-	m.Character = CharacterInfo{Known: true, Name: "Leftover"}
+	m.Character = CharacterInfo{Known: true, Characters: []Character{{Name: "Leftover"}}}
 
 	if err := m.UnlinkRequested(); err != nil {
 		t.Fatalf("UnlinkRequested: %v", err)
@@ -221,7 +221,7 @@ func TestMachine_unlinkRequestedResetsEverything(t *testing.T) {
 	if m.Summary != (SummaryInfo{}) {
 		t.Fatalf("Summary = %+v, want zero value after unlinking", m.Summary)
 	}
-	if m.Character != (CharacterInfo{}) {
+	if m.Character.Known || len(m.Character.Characters) != 0 {
 		t.Fatalf("Character = %+v, want zero value after unlinking", m.Character)
 	}
 }

@@ -141,6 +141,12 @@ func (a *app) screen2(v state.PrerequisitesView) []Widget {
 		}
 	}, dpsExtra...))
 
+	children = append(children, prereqCardWidget(v.CharacterCard, func(label string) {
+		if label == v.CharacterCard.ActionLabel {
+			openBrowser(defaultServerURL)
+		}
+	}))
+
 	children = append(children,
 		HSeparator{MaxSize: Size{Height: 1}, Background: solid(colorSeparator)},
 		toggleRow(v.LaunchAtStartupLabel, a.settings.LaunchAtStartup, func(checked bool) {
@@ -252,8 +258,19 @@ func (a *app) sidebarB(vm state.ViewModel) Widget {
 			VSpacer{},
 			statusLine(a.logo, "Compte lié", a.credential != ""),
 			statusLine(a.a2toolsLogo, "DPS Meter A2Tools", a.machine.DPSMeter.Found),
+			statusLine(nil, characterStatusLabel(vm), vm.CharacterKnown),
 		},
 	}
+}
+
+// characterStatusLabel picks the sidebar's third status line's text —
+// vm.CharacterSummary already holds the formatted name(s), or is empty
+// when none are known.
+func characterStatusLabel(vm state.ViewModel) string {
+	if vm.CharacterKnown {
+		return vm.CharacterSummary
+	}
+	return "Aucun personnage déclaré"
 }
 
 func (a *app) screen3(v state.ReadyView) []Widget {

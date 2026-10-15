@@ -133,6 +133,7 @@ func runApp(startMinimized bool) {
 	enableDarkTitleBar(a.mw.Handle())
 	a.mw.SetExitOnClose(true)
 	a.mw.Closing().Attach(a.onWindowClosing)
+	a.mw.Activating().Attach(a.onWindowActivated)
 	a.setupTray()
 	if a.settings.AutoSync {
 		a.startAutoSync()
@@ -141,6 +142,10 @@ func runApp(startMinimized bool) {
 	a.render()
 	if !startMinimized || a.tray == nil {
 		a.mw.Show()
+	}
+
+	if a.credential != "" {
+		a.refreshCharacter()
 	}
 
 	go func() {
@@ -288,6 +293,7 @@ func (a *app) onLinkRequested() {
 			}
 			a.render()
 			a.refreshPrereqs(false)
+			a.refreshCharacter()
 		})
 	}()
 }
@@ -332,6 +338,46 @@ func (a *app) refreshPrereqs(advance bool) {
 			a.render()
 		})
 	}()
+}
+
+// refreshCharacter fetches the member's declared, active characters,
+// best effort: any error (including a 404 when the server's sync feature
+// flag is off) just leaves screen 2's card, the sidebar and screen 5's
+// subtitle hidden until a later call succeeds, same spirit as
+// refreshPrereqs' pending-count fetch above.
+func (a *app) refreshCharacter() {
+	go func() {
+		defer recoverAndReport()
+		ctx, cancel := context.WithTimeout(context.Background(), quickCheckTimeout)
+		characters, err := a.client.Characters(ctx, a.credential)
+		cancel()
+		if err != nil {
+			return
+		}
+		info := state.CharacterInfo{Known: len(characters) > 0}
+		for _, c := range characters {
+			info.Characters = append(info.Characters, state.Character{Name: c.CharacterName, Server: c.ServerName})
+		}
+		a.ui(func() {
+			a.machine.Character = info
+			a.render()
+		})
+	}()
+}
+
+// onWindowActivated re-checks the declared-character list whenever the
+// member brings the window back to the foreground — the same moment
+// they'd plausibly be returning from declaring one in their system
+// browser (screen 2's "Déclarer un personnage ↗" opens the account page
+// externally; see screens.go). A no-op once a character is already known,
+// and while unlinked: nothing in the UX needs this to keep polling after
+// the card is already filled in, or before there's a credential to call
+// the endpoint with.
+func (a *app) onWindowActivated() {
+	if a.credential == "" || a.machine.Character.Known {
+		return
+	}
+	a.refreshCharacter()
 }
 
 func (a *app) onFinishPrerequisites() {

@@ -18,14 +18,20 @@ type DPSMeterInfo struct {
 	PendingCount int
 }
 
-// CharacterInfo is the member's declared character, shown on screen 2's
-// third card and in gabarit B's sidebar. Nothing populates this yet: it
-// needs a member-scoped "list my declared characters" endpoint
-// (GET /api/sync/characters or equivalent) that the aion-theory server does
-// not expose today. Known stays false until it does; BuildViewModel hides
-// every field that would need it rather than guess a name.
+// CharacterInfo is the member's declared, active characters, shown on
+// screen 2's third card, in gabarit B's sidebar, and in screen 5's
+// subtitle. Known stays false until cmd/gui's GET /api/sync/characters
+// fetch succeeds and returns at least one character; BuildViewModel hides
+// every field that would need it until then rather than guess a name.
 type CharacterInfo struct {
-	Known  bool
+	Known      bool
+	Characters []Character
+}
+
+// Character is one declared, active character. Server is empty when the
+// server could not resolve it (serverName: null) — shown without a server
+// rather than guessed.
+type Character struct {
 	Name   string
 	Server string
 }

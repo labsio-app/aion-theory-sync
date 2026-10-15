@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -145,5 +147,39 @@ func TestRecordedMeterLogIDs_returnsASetForFastLookup(t *testing.T) {
 	}
 	if !ids["auto_1_1"] || !ids["auto_2_2"] || ids["auto_3_3"] {
 		t.Fatalf("ids = %v", ids)
+	}
+}
+
+func TestCharacters_decodesEveryField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"characters":[`+
+			`{"characterId":"c1","characterName":"Yume","serverName":"Siel"},`+
+			`{"characterId":"c2","characterName":"Lira","serverName":null}`+
+			`]}`)
+	}))
+	defer server.Close()
+
+	characters, err := New(server.URL).Characters(context.Background(), "credential")
+	if err != nil {
+		t.Fatalf("Characters: %v", err)
+	}
+	want := []Character{
+		{CharacterID: "c1", CharacterName: "Yume", ServerName: "Siel"},
+		{CharacterID: "c2", CharacterName: "Lira", ServerName: ""},
+	}
+	if !reflect.DeepEqual(characters, want) {
+		t.Fatalf("characters = %+v, want %+v", characters, want)
+	}
+}
+
+func TestCharacters_404BecomesErrNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	_, err := New(server.URL).Characters(context.Background(), "credential")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
 }
