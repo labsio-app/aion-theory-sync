@@ -16,10 +16,39 @@ import (
 type Settings struct {
 	HistoryDir string `json:"historyDir"`
 
+	// HistoryDirIsCustom is false while HistoryDir is still whatever
+	// sync.HistoryDir() auto-detected, true once the member has picked a
+	// folder themselves (screen 2's "Choisir le dossier", screen 8's
+	// "Modifier") — the settings screen shows "détecté automatiquement" or
+	// "personnalisé" from this rather than comparing paths on every launch.
+	HistoryDirIsCustom bool `json:"historyDirIsCustom,omitempty"`
+
 	// LastSyncedAt is RFC3339, set after a sync completes successfully —
 	// the GUI's onboarding status reads it to show "Dernière synchro : …"
 	// instead of re-deriving it from the uploaded combat logs themselves.
 	LastSyncedAt string `json:"lastSyncedAt,omitempty"`
+
+	// LaunchAtStartup and StartMinimized drive internal/autostart's Run
+	// registry key; AutoSync drives the history-folder watcher. All three
+	// are plain saved preferences (Load returns Go's zero value, false,
+	// for a settings.json predating these fields, or for one that simply
+	// never set them) - the UX spec's "activé par défaut" for a fresh
+	// onboarding is cmd/gui's job to apply once, when it first saves
+	// Settings after screen 2, not something Load should guess at every
+	// read of an existing file.
+	LaunchAtStartup bool `json:"launchAtStartup,omitempty"`
+	StartMinimized  bool `json:"startMinimized,omitempty"`
+	AutoSync        bool `json:"autoSync,omitempty"`
+}
+
+// OnboardingDefaults is the toggle state screen 2 shows before the member
+// has touched anything, for a fresh link: launch at startup and auto-sync
+// on, start-minimized off (the UX spec's "activé par défaut" / "désactivé
+// par défaut"). cmd/gui applies this once, when saving Settings right
+// after a successful link — Load itself never assumes it (see the
+// Settings doc comment above).
+func OnboardingDefaults() Settings {
+	return Settings{LaunchAtStartup: true, AutoSync: true}
 }
 
 func settingsPath(dir string) string {
