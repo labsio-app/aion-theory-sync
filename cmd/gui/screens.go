@@ -3,6 +3,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/tailscale/walk"
 	. "github.com/tailscale/walk/declarative"
 
@@ -20,6 +22,58 @@ func (a *app) screenWidget(vm state.ViewModel) Widget {
 		return a.gabaritA(vm)
 	default:
 		return a.gabaritB(vm)
+	}
+}
+
+// updateBanner sits above a screen's own content, on every screen — self-
+// update didn't exist when the UX spec was written, so there's no spec
+// card or copy for it; it reuses the existing card palette and button/
+// progress-bar look (widgets.go's package comment explains why those are
+// plain native controls) rather than inventing new colors. Empty (nil)
+// until checkForUpdate (main_windows.go) finds something, so it costs
+// nothing on the vast majority of launches.
+func (a *app) updateBanner() []Widget {
+	if !a.updateAvailable {
+		return nil
+	}
+
+	var row []Widget
+	if a.updating {
+		value := a.dlProgress.percent()
+		if value < 0 {
+			value = 0
+		}
+		row = []Widget{
+			Label{Text: a.dlProgress.label(time.Now()), Font: fontUI, TextColor: colorText},
+			HSpacer{},
+			ProgressBar{MinValue: 0, MaxValue: 100, Value: value, MinSize: Size{Width: 160, Height: 12}},
+		}
+	} else {
+		ver := ""
+		if a.updateInfo != nil {
+			ver = a.updateInfo.Version
+		}
+		// Downloading an update ends by exiting the process (app.go's
+		// onUpdateClicked, then update.Relaunch) — never while a sync is
+		// actively uploading, even though a cut-off upload is safe to
+		// retry (the server dedupes by meter log id): abruptly closing
+		// mid-progress-bar would read as a crash, not an update.
+		syncing := a.machine.Current == state.Syncing
+		text := "Une mise à jour (" + ver + ") est disponible."
+		if syncing {
+			text += " Disponible une fois la synchro terminée."
+		}
+		row = []Widget{
+			Label{Text: text, Font: fontUI, TextColor: colorText},
+			HSpacer{},
+			PushButton{Text: "Mettre à jour", Enabled: !syncing, MinSize: Size{Height: 36, Width: 150}, Background: solid(colorAccent), OnClicked: a.onUpdateClicked},
+		}
+	}
+
+	return []Widget{
+		bordered(colorCardBorder, colorCardBG, Margins{Left: 16, Top: 10, Right: 16, Bottom: 10}, 0, []Widget{
+			Composite{Layout: HBox{MarginsZero: true, Spacing: 12}, Background: solid(colorCardBG), Children: row},
+		}),
 	}
 }
 
@@ -57,7 +111,7 @@ func (a *app) gabaritA(vm state.ViewModel) Widget {
 			Composite{
 				Background: solid(colorGround),
 				Layout:     VBox{Margins: Margins{Left: 56, Top: 56, Right: 56, Bottom: 56}, Spacing: 14},
-				Children:   content,
+				Children:   append(a.updateBanner(), content...),
 			},
 		},
 	}
@@ -192,7 +246,7 @@ func (a *app) gabaritB(vm state.ViewModel) Widget {
 			Composite{
 				Background: solid(colorGround),
 				Layout:     VBox{Margins: Margins{Left: 48, Top: 40, Right: 48, Bottom: 40}, Spacing: 12},
-				Children:   content,
+				Children:   append(a.updateBanner(), content...),
 			},
 		},
 	}

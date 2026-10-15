@@ -75,7 +75,13 @@ func recoverAndReport() {
 // skipped -ldflags (ci.yml, a local `go build`), which update.Check
 // always treats as "nothing to check" — so this is a no-op outside a
 // release build installed via Setup.exe or the raw goreleaser binary.
-func checkForUpdate(mw *walk.MainWindow, appendLog func(string), onAvailable func()) {
+//
+// It only detects and reports: onAvailable (app.go) shows the banner
+// every screen now carries instead of popping a blocking dialog here, so
+// a member decides for themselves when to click "Mettre à jour" — never
+// the instant this check happens to finish. The actual download/install/
+// relaunch lives in app.go's onUpdateClicked, triggered from that banner.
+func checkForUpdate(appendLog func(string), onAvailable func(update.Available)) {
 	// A leftover from a previous update (see update.Apply) only ever
 	// blocks a future update's own rename dance, never today's launch,
 	// so cleaning it up here (rather than failing anything) is enough.
@@ -84,46 +90,15 @@ func checkForUpdate(mw *walk.MainWindow, appendLog func(string), onAvailable fun
 	checkCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	checker := update.New()
-	available, err := checker.Check(checkCtx, version.Version)
+	available, err := update.New().Check(checkCtx, version.Version)
 	if err != nil {
 		appendLog("Vérification des mises à jour : " + err.Error())
 		return
 	}
-	if available == nil {
+	if available == nil || onAvailable == nil {
 		return
 	}
-	if onAvailable != nil {
-		onAvailable()
-	}
-
-	var install bool
-	walk.App().Synchronize(func() {
-		msg := fmt.Sprintf("Une nouvelle version (%s) est disponible. L'installer maintenant ?", available.Version)
-		install = walk.MsgBox(mw, "Mise à jour disponible", msg, walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) == walk.DlgCmdYes
-	})
-	if !install {
-		return
-	}
-
-	downloadCtx, cancelDownload := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancelDownload()
-
-	newExePath, err := checker.Download(downloadCtx, available.DownloadURL, func(downloaded, total int64) {})
-	if err != nil {
-		appendLog("Échec du téléchargement de la mise à jour : " + err.Error())
-		return
-	}
-
-	if err := update.Apply(newExePath); err != nil {
-		appendLog("Échec de l'installation de la mise à jour : " + err.Error())
-		return
-	}
-	if err := update.Relaunch(); err != nil {
-		appendLog("Mise à jour installée, mais le redémarrage a échoué : " + err.Error())
-		return
-	}
-	os.Exit(0)
+	onAvailable(*available)
 }
 
 // guiWriter adapts the plain-text progress lines internal/auth and

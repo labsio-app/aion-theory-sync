@@ -20,6 +20,7 @@ import (
 	"github.com/labsio-app/aion-theory-sync/internal/settings"
 	"github.com/labsio-app/aion-theory-sync/internal/sync"
 	"github.com/labsio-app/aion-theory-sync/internal/ui/state"
+	"github.com/labsio-app/aion-theory-sync/internal/update"
 )
 
 // quickCheckTimeout bounds a background "is the server reachable, what's
@@ -59,7 +60,11 @@ type app struct {
 	logo        walk.Image
 	a2toolsLogo walk.Image
 
+	updateChecker   *update.Checker
 	updateAvailable bool
+	updateInfo      *update.Available
+	updating        bool
+	dlProgress      downloadProgress
 
 	tray    *walk.NotifyIcon
 	watcher *folderWatcher
@@ -67,9 +72,10 @@ type app struct {
 
 func runApp(startMinimized bool) {
 	a := &app{
-		configDir: auth.ConfigDir(),
-		client:    api.New(defaultServerURL),
-		autoStart: autostart.Windows{},
+		configDir:     auth.ConfigDir(),
+		client:        api.New(defaultServerURL),
+		autoStart:     autostart.Windows{},
+		updateChecker: update.New(),
 	}
 
 	loaded, _ := settings.Load(a.configDir)
@@ -150,12 +156,11 @@ func runApp(startMinimized bool) {
 
 	go func() {
 		defer recoverAndReport()
-		checkForUpdate(a.mw, a.appendLog, func() {
+		checkForUpdate(a.appendLog, func(available update.Available) {
 			a.ui(func() {
+				a.updateInfo = &available
 				a.updateAvailable = true
-				if a.machine.Current == state.Settings {
-					a.render()
-				}
+				a.render() // the banner (screens.go) is on every screen, not just Settings
 			})
 		})
 	}()
@@ -554,6 +559,67 @@ func (a *app) onOpenTechnicalLog() {
 		a.logWindow = nil
 	})
 	a.logWindow.Show()
+}
+
+// --- Self-update banner (every screen) --------------------------------
+
+// onUpdateClicked starts the actual download for the update the banner is
+// showing — see updateBanner in screens.go. Always member-initiated:
+// checkForUpdate only ever reports an update is available, never starts
+// downloading it on its own, so this is the one place the fetch, the
+// in-place swap (update.Apply) and the relaunch (update.Relaunch) happen,
+// and only once a member clicks the banner's button.
+func (a *app) onUpdateClicked() {
+	if a.updating || a.updateInfo == nil || a.machine.Current == state.Syncing {
+		return
+	}
+	a.updating = true
+	a.dlProgress = downloadProgress{StartedAt: time.Now()}
+	a.render()
+
+	downloadURL := a.updateInfo.DownloadURL
+	go func() {
+		defer recoverAndReport()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		newExePath, err := a.updateChecker.Download(ctx, downloadURL, func(downloaded, total int64) {
+			a.ui(func() {
+				before := a.dlProgress.percent()
+				a.dlProgress.Downloaded, a.dlProgress.Total = downloaded, total
+				// Re-rendering on every chunk (a few hundred for a ~15 MB
+				// exe) would needlessly tear down and rebuild the whole
+				// screen; only a changed percentage is worth repainting.
+				if a.dlProgress.percent() != before {
+					a.render()
+				}
+			})
+		})
+		if err != nil {
+			a.onUpdateFailed("Échec du téléchargement de la mise à jour : " + err.Error())
+			return
+		}
+		if err := update.Apply(newExePath); err != nil {
+			a.onUpdateFailed("Échec de l'installation de la mise à jour : " + err.Error())
+			return
+		}
+		if err := update.Relaunch(); err != nil {
+			a.onUpdateFailed("Mise à jour installée, mais le redémarrage a échoué : " + err.Error())
+			return
+		}
+		os.Exit(0)
+	}()
+}
+
+// onUpdateFailed resets the banner back to its "available" state (rather
+// than leaving it stuck showing a dead progress bar) and logs why, so a
+// member can at least retry or check the technical log.
+func (a *app) onUpdateFailed(logLine string) {
+	a.ui(func() {
+		a.updating = false
+		a.appendLog(logLine)
+		a.render()
+	})
 }
 
 func joinLines(lines []string) string {
