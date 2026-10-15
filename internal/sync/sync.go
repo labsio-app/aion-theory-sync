@@ -95,9 +95,38 @@ func (s Summary) String() string {
 	return out
 }
 
+// meterLogID is the handful of fields Run and PendingCombats read straight
+// off a history file's own JSON, without decoding the rest of it (skills,
+// actors...): the meter log id to dedupe against the server, plus the two
+// fields RunWithProgress's current-file events echo back to the caller.
 type meterLogID struct {
-	ID string `json:"id"`
+	ID          string `json:"id"`
+	StartTimeMs int64  `json:"startTimeMs"`
+	DurationMs  int64  `json:"durationMs"`
 }
+
+// FileProgress is the combat log a running RunWithProgress call is
+// currently uploading.
+type FileProgress struct {
+	StartedAt time.Time
+	Duration  time.Duration
+}
+
+// ProgressEvent is one step of a RunWithProgress call: either a file about
+// to upload (Total/Done/Current set) or a rate limit the server just
+// returned (RateLimited set, everything else zero). Total/Done still
+// accompany a RateLimited event, so a caller only watching Done/Total
+// never has to merge two event shapes to track progress.
+type ProgressEvent struct {
+	Total       int
+	Done        int
+	Current     FileProgress
+	RateLimited time.Duration // 0 unless this event reports a fresh rate limit
+}
+
+// ProgressFunc receives every ProgressEvent a RunWithProgress call emits,
+// in order, on the same goroutine that called it.
+type ProgressFunc func(ProgressEvent)
 
 // Run uploads every history file whose meter log id is not already in
 // knownIDs. The tool keeps no state of its own (F3/D9): knownIDs comes from
@@ -105,6 +134,18 @@ type meterLogID struct {
 // anything and a file for a character declared later is picked up as soon
 // as it is re-offered.
 func Run(ctx context.Context, client *api.Client, credential, historyDir string, out io.Writer) (Summary, error) {
+	return RunWithProgress(ctx, client, credential, historyDir, out, nil)
+}
+
+// RunWithProgress is Run, but also reports structured progress through
+// onProgress as it goes — the GUI's syncing screen uses this to drive its
+// progress ring, current-file line and rate-limit countdown without
+// having to parse out's plain-text lines. onProgress may be nil.
+func RunWithProgress(ctx context.Context, client *api.Client, credential, historyDir string, out io.Writer, onProgress ProgressFunc) (Summary, error) {
+	if onProgress == nil {
+		onProgress = func(ProgressEvent) {}
+	}
+
 	summary := newSummary()
 
 	knownIDs, err := client.RecordedMeterLogIDs(ctx, credential)
@@ -121,7 +162,7 @@ func Run(ctx context.Context, client *api.Client, credential, historyDir string,
 	// maxPause — a plain proactive throttle the rest of the time.
 	pause := basePause
 
-	for _, file := range files {
+	for i, file := range files {
 		raw, err := os.ReadFile(file)
 		if err != nil {
 			fmt.Fprintf(out, "%s: could not read (%v)\n", filepath.Base(file), err)
@@ -130,10 +171,13 @@ func Run(ctx context.Context, client *api.Client, credential, historyDir string,
 		}
 
 		var parsed meterLogID
-		if err := json.Unmarshal(raw, &parsed); err == nil && parsed.ID != "" && knownIDs[parsed.ID] {
+		json.Unmarshal(raw, &parsed) // best-effort: a parse failure leaves parsed at its zero value
+		if parsed.ID != "" && knownIDs[parsed.ID] {
 			summary.AlreadyRecorded++
 			continue
 		}
+
+		onProgress(ProgressEvent{Total: len(files), Done: i, Current: fileProgress(parsed)})
 
 		gzipped, err := gzipBytes(raw)
 		if err != nil {
@@ -173,6 +217,7 @@ func Run(ctx context.Context, client *api.Client, credential, historyDir string,
 					next = maxPause
 				}
 				pause = next
+				onProgress(ProgressEvent{Total: len(files), Done: i, RateLimited: next})
 			}
 
 			fmt.Fprintf(out, "%s: upload failed (%v)\n", filepath.Base(file), err)
@@ -195,7 +240,53 @@ func Run(ctx context.Context, client *api.Client, credential, historyDir string,
 		}
 	}
 
+	onProgress(ProgressEvent{Total: len(files), Done: len(files)})
 	return summary, nil
+}
+
+func fileProgress(parsed meterLogID) FileProgress {
+	var fp FileProgress
+	if parsed.StartTimeMs > 0 {
+		fp.StartedAt = time.UnixMilli(parsed.StartTimeMs)
+	}
+	fp.Duration = time.Duration(parsed.DurationMs) * time.Millisecond
+	return fp
+}
+
+// PendingCombats counts the history files Run would attempt to upload
+// right now — everything under historyDir whose meter log id the server
+// doesn't already have. It makes the same RecordedMeterLogIDs round trip
+// Run does, but no upload, so the GUI can show "N combats en attente"
+// (screens 2/3/6) before the member ever clicks sync.
+func PendingCombats(ctx context.Context, client *api.Client, credential, historyDir string) (int, error) {
+	knownIDs, err := client.RecordedMeterLogIDs(ctx, credential)
+	if err != nil {
+		return 0, fmt.Errorf("listing already-recorded combat logs: %w", err)
+	}
+
+	files, err := filepath.Glob(filepath.Join(historyDir, "*.json"))
+	if err != nil {
+		return 0, fmt.Errorf("scanning %s: %w", historyDir, err)
+	}
+
+	pending := 0
+	for _, file := range files {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			// Run counts an unreadable file as Failed rather than
+			// skipping it silently; PendingCombats treats it the same
+			// way, as "something Run will have to deal with".
+			pending++
+			continue
+		}
+		var parsed meterLogID
+		json.Unmarshal(raw, &parsed)
+		if parsed.ID != "" && knownIDs[parsed.ID] {
+			continue
+		}
+		pending++
+	}
+	return pending, nil
 }
 
 // sleepCtx pauses for d, or returns ctx's error early if it's cancelled

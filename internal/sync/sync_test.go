@@ -257,3 +257,150 @@ func TestRun_aRateLimitOnOneFileDoesNotStopTheRestOfTheBatch(t *testing.T) {
 		t.Fatalf("output = %q, want it to mention the rate limit", out.String())
 	}
 }
+
+func TestRunWithProgress_reportsTotalDoneAndTheCurrentFile(t *testing.T) {
+	historyDir := t.TempDir()
+	copyFixtureInto(t, historyDir, "combat-sample.json")
+	copyFixtureInto(t, historyDir, "combat-sample-2.json")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/sync/combat-logs/ids":
+			json.NewEncoder(w).Encode(map[string][]string{"meterLogIds": {}})
+		case r.URL.Path == "/api/sync/combat-logs":
+			json.NewEncoder(w).Encode(api.SyncOutcome{Kind: "RECORDED"})
+		}
+	}))
+	defer server.Close()
+
+	var events []ProgressEvent
+	var out strings.Builder
+	summary, err := RunWithProgress(context.Background(), api.New(server.URL), "credential", historyDir, &out,
+		func(e ProgressEvent) { events = append(events, e) })
+	if err != nil {
+		t.Fatalf("RunWithProgress: %v", err)
+	}
+	if summary.Recorded != 2 {
+		t.Fatalf("Recorded = %d, want 2", summary.Recorded)
+	}
+
+	// One event per file (Total=2, Done=0 then Done=1), plus a final event
+	// at Done==Total.
+	if len(events) != 3 {
+		t.Fatalf("got %d progress events, want 3: %+v", len(events), events)
+	}
+	for _, e := range events[:2] {
+		if e.Total != 2 {
+			t.Fatalf("event %+v: Total = %d, want 2", e, e.Total)
+		}
+	}
+	if events[0].Done != 0 || events[1].Done != 1 {
+		t.Fatalf("Done sequence = %d, %d, want 0, 1", events[0].Done, events[1].Done)
+	}
+	// filepath.Glob sorts lexically ("combat-sample-2.json" before
+	// "combat-sample.json"), so check both fixtures' durations showed up
+	// rather than assuming which file is events[0].
+	gotDurations := map[time.Duration]bool{events[0].Current.Duration: true, events[1].Current.Duration: true}
+	if events[0].Current.StartedAt.IsZero() || events[1].Current.StartedAt.IsZero() {
+		t.Fatal("a file event's Current.StartedAt is zero, want it from the fixture's startTimeMs")
+	}
+	if !gotDurations[42*time.Second] || !gotDurations[30*time.Second] {
+		t.Fatalf("Current.Duration across the two file events = %v, want 42s and 30s", gotDurations)
+	}
+	last := events[2]
+	if last.Done != 2 || last.Total != 2 {
+		t.Fatalf("final event = %+v, want Done=Total=2", last)
+	}
+}
+
+func TestRunWithProgress_reportsARateLimitedEvent(t *testing.T) {
+	// TestMain shrinks maxPause to 5ms for the whole package's test run,
+	// which would otherwise clamp away the point of this test (that the
+	// server's own Retry-After, not basePause*2, drives the reported
+	// pause): give it room back just for this test.
+	originalMaxPause := maxPause
+	maxPause = 10 * time.Second
+	t.Cleanup(func() { maxPause = originalMaxPause })
+
+	historyDir := t.TempDir()
+	copyFixtureInto(t, historyDir, "combat-sample.json")
+	copyFixtureInto(t, historyDir, "combat-sample-2.json")
+
+	uploads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/sync/combat-logs/ids":
+			json.NewEncoder(w).Encode(map[string][]string{"meterLogIds": {}})
+		case r.URL.Path == "/api/sync/combat-logs":
+			uploads++
+			if uploads == 1 {
+				w.Header().Set("Retry-After", "3")
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			json.NewEncoder(w).Encode(api.SyncOutcome{Kind: "RECORDED"})
+		}
+	}))
+	defer server.Close()
+
+	var rateLimitedEvents []ProgressEvent
+	var out strings.Builder
+	_, err := RunWithProgress(context.Background(), api.New(server.URL), "credential", historyDir, &out,
+		func(e ProgressEvent) {
+			if e.RateLimited > 0 {
+				rateLimitedEvents = append(rateLimitedEvents, e)
+			}
+		})
+	if err != nil {
+		t.Fatalf("RunWithProgress: %v", err)
+	}
+	if len(rateLimitedEvents) != 1 {
+		t.Fatalf("got %d rate-limited events, want 1: %+v", len(rateLimitedEvents), rateLimitedEvents)
+	}
+	// The server's own Retry-After (3s) must win over basePause*2, which
+	// TestMain shrinks to 2ms for this whole package's test run.
+	if rateLimitedEvents[0].RateLimited != 3*time.Second {
+		t.Fatalf("RateLimited = %v, want 3s (the server's Retry-After)", rateLimitedEvents[0].RateLimited)
+	}
+}
+
+func TestPendingCombats_countsFilesTheServerDoesNotHaveYet(t *testing.T) {
+	historyDir := t.TempDir()
+	copyFixtureInto(t, historyDir, "combat-sample.json")
+	copyFixtureInto(t, historyDir, "combat-sample-2.json")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/sync/combat-logs/ids" {
+			json.NewEncoder(w).Encode(map[string][]string{"meterLogIds": {"auto_90001_1700000000000"}})
+			return
+		}
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	pending, err := PendingCombats(context.Background(), api.New(server.URL), "credential", historyDir)
+	if err != nil {
+		t.Fatalf("PendingCombats: %v", err)
+	}
+	if pending != 1 {
+		t.Fatalf("PendingCombats = %d, want 1 (the one fixture not already known)", pending)
+	}
+}
+
+func TestPendingCombats_isZeroWhenTheServerAlreadyHasEverything(t *testing.T) {
+	historyDir := t.TempDir()
+	copyFixtureInto(t, historyDir, "combat-sample.json")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string][]string{"meterLogIds": {"auto_90001_1700000000000"}})
+	}))
+	defer server.Close()
+
+	pending, err := PendingCombats(context.Background(), api.New(server.URL), "credential", historyDir)
+	if err != nil {
+		t.Fatalf("PendingCombats: %v", err)
+	}
+	if pending != 0 {
+		t.Fatalf("PendingCombats = %d, want 0", pending)
+	}
+}
