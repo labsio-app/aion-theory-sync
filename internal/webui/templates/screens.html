@@ -1,0 +1,263 @@
+{{define "shell"}}<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aion Theory Sync</title>
+<link rel="icon" href="{{.LogoURL}}">
+<link rel="stylesheet" href="/assets/base.css">
+</head>
+<body data-screen="{{.Screen}}">
+<div class="app">
+{{if eq .Gabarit "a"}}{{template "sidebar-a" .}}{{else}}{{template "sidebar-b" .}}{{end}}
+<div class="content content--{{.Gabarit}}">
+{{if .UpdateBanner}}{{template "update-banner" .UpdateBanner}}{{end}}
+{{if eq .Screen "unlinked"}}{{template "screen-unlinked" .Unlinked}}
+{{else if eq .Screen "linking"}}{{template "screen-linking" .Linking}}
+{{else if eq .Screen "prerequisites"}}{{template "screen-prerequisites" .Prerequisites}}
+{{else if eq .Screen "ready"}}{{template "screen-ready" .Ready}}
+{{else if eq .Screen "syncing"}}{{template "screen-syncing" .Syncing}}
+{{else if eq .Screen "done"}}{{template "screen-done" .Done}}
+{{else if eq .Screen "up_to_date"}}{{template "screen-uptodate" .UpToDate}}
+{{else if eq .Screen "blocked"}}{{template "screen-blocked" .Blocked}}
+{{else if eq .Screen "settings"}}{{template "screen-settings" .Settings}}
+{{end}}
+</div>
+</div>
+<script src="/assets/app.js"></script>
+</body>
+</html>
+{{end}}
+
+{{define "update-banner"}}
+<div class="update-banner">
+  {{if .Updating}}
+  <span class="text">{{.ProgressLabel}}</span>
+  <progress max="100" value="{{.Percent}}"></progress>
+  {{else}}
+  <span class="text">{{.Text}}</span>
+  <button class="btn btn-primary" data-action="update-clicked" {{if .ButtonDisabled}}disabled{{end}}>{{.ButtonLabel}}</button>
+  {{end}}
+</div>
+{{end}}
+
+{{define "sidebar-a"}}
+<div class="sidebar sidebar--a">
+  <img class="sidebar-logo" src="{{.LogoURL}}" alt="">
+  <h1 class="app-title">Aion Theory Sync</h1>
+  <p class="app-tagline">Tes combats du DPS meter, rattachés à ton personnage sur Aion Theory.</p>
+  <div class="gap-sm"></div>
+  <div class="stepper">
+    {{range .SidebarA.Steps}}
+    <div class="stepper-step {{.Class}}">
+      <span class="stepper-pill {{.Class}}">{{.Mark}}</span>
+      <span class="stepper-label">{{.Label}}</span>
+    </div>
+    {{end}}
+  </div>
+  <div class="sidebar-spacer"></div>
+</div>
+{{end}}
+
+{{define "sidebar-b"}}
+<div class="sidebar sidebar--b">
+  <div class="sidebar-brand">
+    <img src="{{.LogoURL}}" alt="">
+    <span>Aion Theory Sync</span>
+  </div>
+  <div class="gap-sm"></div>
+  {{range .SidebarB.Nav}}
+  <div class="nav-item {{if .Active}}is-active{{end}}">
+    <span class="nav-bar"></span>
+    <button data-action="{{.Action}}">{{.Label}}</button>
+  </div>
+  {{end}}
+  <div class="sidebar-spacer"></div>
+  <div class="status-list">
+    {{range .SidebarB.Status}}
+    <div class="status-line">
+      {{if .IconURL}}<img src="{{.IconURL}}" alt="">{{end}}
+      <span class="label">{{.Label}}</span>
+      <span class="status-dot {{if .OK}}is-ok{{end}}"></span>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+{{define "screen-unlinked"}}
+{{if .ExpiredBanner}}<div class="banner">{{.ExpiredBannerText}}</div>{{end}}
+{{if .RevokedBanner}}<div class="banner">{{.RevokedBannerText}}</div>{{end}}
+<h2 class="screen-title screen-title--lg">{{.Title}}</h2>
+<p class="screen-body">{{.Body}}</p>
+<div class="spacer"></div>
+<div class="row">
+  <button class="btn btn-primary" data-action="link-requested">{{.PrimaryButton}}</button>
+  <span class="hint">{{.Hint}}</span>
+</div>
+{{end}}
+
+{{define "screen-linking"}}
+<h2 class="screen-title screen-title--lg">{{.Title}}</h2>
+<p class="screen-body">{{.Subtitle}}</p>
+<div class="card code-card">
+  <span class="code">{{.UserCode}}</span>
+  <button class="btn btn-secondary" data-copy="{{.UserCode}}">{{.CopyButton}}</button>
+</div>
+<div class="waiting-row">
+  <span class="waiting-dot"></span>
+  <span>{{.WaitingText}}</span>
+</div>
+<div class="spacer"></div>
+<div class="row">
+  <button class="btn btn-primary" data-action="reopen-link">{{.ReopenButton}}</button>
+  <button class="link" data-action="cancel-linking">{{.CancelText}}</button>
+</div>
+{{end}}
+
+{{define "prereq-card"}}
+<div class="card prereq-card">
+  <span class="prereq-mark {{if .Done}}is-done{{end}}">{{if .Done}}✓{{else}}!{{end}}</span>
+  <div class="prereq-body">
+    <span class="prereq-title">{{.Title}}</span>
+    <span class="prereq-subtitle">{{.Subtitle}}</span>
+  </div>
+  <div class="prereq-actions">
+    {{if .ActionName}}<button class="link" data-action="{{.ActionName}}">{{.ActionLabel}}</button>{{end}}
+    {{if .ExtraActionLabel}}<button class="link" data-action="choose-folder">{{.ExtraActionLabel}}</button>{{end}}
+  </div>
+</div>
+{{end}}
+
+{{define "screen-prerequisites"}}
+<h2 class="screen-title screen-title--lg">{{.Title}}</h2>
+{{template "prereq-card" .AccountCard}}
+{{template "prereq-card" .DPSMeterCard}}
+{{template "prereq-card" .CharacterCard}}
+<hr class="separator">
+<div class="toggle-row">
+  <span class="toggle-label">{{.LaunchAtStartupLabel}}</span>
+  <label class="toggle"><input type="checkbox" data-action="toggle-launch-at-startup" {{if .LaunchAtStartup}}checked{{end}}><span class="track"></span></label>
+</div>
+<div class="toggle-row">
+  <span class="toggle-label">{{.AutoSyncLabel}}</span>
+  <label class="toggle"><input type="checkbox" data-action="toggle-auto-sync" {{if .AutoSync}}checked{{end}}><span class="track"></span></label>
+</div>
+<div class="spacer"></div>
+<div class="row" style="justify-content:flex-end;">
+  <button class="btn btn-primary" data-action="finish-prerequisites" {{if not .FinishEnabled}}disabled{{end}}>{{.FinishButton}}</button>
+</div>
+{{end}}
+
+{{define "screen-ready"}}
+<p class="last-synced">{{.LastSyncedLabel}}</p>
+<div class="spacer"></div>
+<p class="hero-count">{{.PendingCount}}</p>
+<p class="hero-label">{{.PendingLabel}}</p>
+<div class="spacer"></div>
+<div class="row" style="justify-content:center;">
+  <button class="btn btn-primary" data-action="sync-now">{{.SyncNowButton}}</button>
+</div>
+{{end}}
+
+{{define "screen-syncing"}}
+<div class="spacer"></div>
+<progress class="ring" max="{{.MaxValue}}" value="{{.Done}}"></progress>
+<p class="syncing-count">{{.Done}}/{{.Total}}</p>
+<p class="syncing-status">{{.StatusText}}</p>
+{{if .CurrentFileLabel}}<p class="syncing-file">{{.CurrentFileLabel}}</p>{{end}}
+{{if .RateLimitActive}}<div class="banner">{{.RateLimitText}}</div>{{end}}
+<div class="spacer"></div>
+<div class="row" style="justify-content:flex-end;">
+  <button class="btn btn-secondary" data-action="toggle-pause">{{.PauseResumeButton}}</button>
+</div>
+{{end}}
+
+{{define "summary-tile"}}
+<div class="tile {{if .Warning}}is-warning{{end}}">
+  <p class="tile-count">{{.Count}}</p>
+  <p class="tile-label">{{.Label}}</p>
+</div>
+{{end}}
+
+{{define "screen-done"}}
+<p class="hero-check center">✓</p>
+<h2 class="screen-title screen-title--lg center">{{.Title}}</h2>
+{{if .SubtitleVisible}}<p class="screen-body center" style="margin:0 auto;">{{.Subtitle}}</p>{{end}}
+<div class="tiles">
+  {{template "summary-tile" .AlreadyPresentTile}}
+  {{template "summary-tile" .NoMatchingCharacterTile}}
+  {{template "summary-tile" .UnreadableTile}}
+</div>
+{{if .FollowupVisible}}<p class="hint">{{.FollowupText}}</p>{{end}}
+{{if .FailedBannerVisible}}<div class="banner">{{.FailedBannerText}}</div>{{end}}
+<div class="spacer"></div>
+<div class="row" style="justify-content:flex-end;">
+  <button class="btn btn-secondary" data-action="close-done">{{.CloseButton}}</button>
+  <button class="btn btn-primary" data-action="view-online">{{.ViewOnlineButton}}</button>
+</div>
+{{end}}
+
+{{define "screen-uptodate"}}
+<p class="last-synced">{{.LastSyncedLabel}}</p>
+<div class="spacer"></div>
+<p class="hero-check center">✓</p>
+<h2 class="screen-title screen-title--md center">{{.Title}}</h2>
+<p class="screen-body center" style="margin:0 auto;">{{.Body}}</p>
+<div class="spacer"></div>
+<div class="row" style="justify-content:center;">
+  <button class="btn btn-primary" data-action="sync-now" {{if .SyncNowDisabled}}disabled{{end}}>{{.SyncNowButton}}</button>
+</div>
+{{end}}
+
+{{define "screen-blocked"}}
+<p class="hero-warn">!</p>
+<h2 class="screen-title screen-title--lg">{{.Title}}</h2>
+<p class="screen-body">{{.Body}}</p>
+<div class="spacer"></div>
+<div class="row row--wrap">
+  {{if .ShowPrimary}}<button class="btn btn-primary" data-action="choose-folder-and-retry">{{.PrimaryButton}}</button>{{end}}
+  <button class="btn btn-secondary" data-action="retry-blocked">{{.RetryButton}}</button>
+  {{if .ShowInstallLink}}<button class="link" data-action="open-install-dps-meter">{{.InstallLinkText}}</button>{{end}}
+  <span class="spacer"></span>
+  <button class="link" data-action="open-technical-log">{{.TechnicalLogLink}}</button>
+</div>
+{{end}}
+
+{{define "screen-settings"}}
+<h2 class="screen-title screen-title--lg">Paramètres</h2>
+<div class="gap-sm"></div>
+<p class="section-header">DÉMARRAGE</p>
+<div class="settings-row">
+  <span class="settings-label">Lancer au démarrage de Windows</span>
+  <label class="toggle"><input type="checkbox" data-action="toggle-launch-at-startup" {{if .LaunchAtStartup}}checked{{end}}><span class="track"></span></label>
+</div>
+<hr class="separator">
+<div class="settings-row">
+  <span class="settings-label">Démarrer réduit dans la zone de notification</span>
+  <label class="toggle"><input type="checkbox" data-action="toggle-start-minimized" {{if .StartMinimized}}checked{{end}}><span class="track"></span></label>
+</div>
+<div class="gap-md"></div>
+<p class="section-header">SYNCHRONISATION</p>
+<div class="settings-row">
+  <span class="settings-label">Envoyer automatiquement les nouveaux combats</span>
+  <label class="toggle"><input type="checkbox" data-action="toggle-auto-sync" {{if .AutoSync}}checked{{end}}><span class="track"></span></label>
+</div>
+<hr class="separator">
+<div class="settings-row">
+  <span class="settings-label">{{.FolderLabel}}</span>
+  <button class="link" data-action="choose-folder">Modifier</button>
+</div>
+<div class="gap-md"></div>
+<p class="section-header">COMPTE</p>
+<div class="settings-row">
+  <span class="settings-label">{{.AccountLabel}}</span>
+  <button class="link" data-action="unlink">Délier ce PC</button>
+</div>
+<div class="spacer"></div>
+<div class="row">
+  <button class="link" data-action="open-technical-log">Ouvrir le journal technique</button>
+  <span class="spacer"></span>
+  <span class="hint">{{.VersionLabel}}</span>
+</div>
+{{end}}

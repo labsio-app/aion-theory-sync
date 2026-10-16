@@ -1,0 +1,15 @@
+{
+  "name": "aion-theory-sync-visual",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Screenshot-based visual regression harness for cmd/gui's HTML/CSS screens (internal/webui). Not shipped — dev tooling only.",
+  "scripts": {
+    "capture": "node capture.mjs",
+    "diff": "node diff.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0",
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0"
+  }
+}

@@ -60,6 +60,12 @@ téléchargement manuel).
 > Voir [docs/code-signing.md](docs/code-signing.md) pour le statut et la
 > démarche (signature gratuite via SignPath, pour les projets open source).
 
+> **L'application a besoin du WebView2 Runtime**, fourni par défaut avec
+> Windows 11 et installé automatiquement sur la plupart des Windows 10 via
+> Windows Update. S'il manque (poste figé ou hors-ligne), l'application
+> l'indique clairement au lancement avec un lien de téléchargement, plutôt
+> que de planter silencieusement.
+
 ### Options avancées (ligne de commande)
 
 L'installeur pose aussi `aion-theory-sync.exe`, un exécutable console sans
@@ -177,6 +183,11 @@ to install it in one click — no browser, no manual re-download.
 > publisher") on first launch: the installer is not signed yet. See
 > [docs/code-signing.md](docs/code-signing.md) for the plan (free signing
 > through SignPath for open-source projects).
+
+> **The app needs the WebView2 Runtime**, bundled by default with Windows
+> 11 and installed automatically on most Windows 10 machines via Windows
+> Update. If it's missing (a locked-down or offline machine), the app says
+> so clearly at launch with a download link, instead of silently crashing.
 
 ### Advanced options (command line)
 

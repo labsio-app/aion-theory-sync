@@ -3,3 +3,9 @@ aion-theory-sync
 dist/
 build/
 *.syso
+
+# tools/visual: Playwright's own Chromium download and deps, plus
+# diff.mjs's throwaway re-capture — baselines/ (the committed references)
+# is deliberately not listed here.
+tools/visual/node_modules/
+tools/visual/current/

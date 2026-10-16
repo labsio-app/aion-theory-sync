@@ -1,0 +1,691 @@
+/* Design tokens — same hex values as the old cmd/gui/theme.go palette.
+   Kept as CSS variables instead of Win32 brushes so cards get real rounded
+   corners, buttons/toggles get real colors instead of theme-drawn native
+   chrome, and flex/grid layouts hold their shape on resize instead of the
+   old VBox/HBox composite tree deforming. */
+:root {
+  --ground: #08071a;
+  --sidebar-bg: #0e0c24;
+  --card-bg: #120f2b;
+  --card-border: #241f45;
+  --separator: #1e1a3d;
+  --text: #f2eefa;
+  --text-soft: #cfc7e6;
+  --muted: #9a91b8;
+  --accent: #6bd5ff;
+  --accent-text: #04030e;
+  --success: #5fd98a;
+  --warning: #ff9d6b;
+  --warning-bg: #2a1a12;
+  --warning-edge: #6b4a30;
+  --nav-active-bg: #1c1840;
+  --secondary-edge: #3a3466;
+  --disabled-bg: #16132f;
+  --disabled-text: #8f87ae;
+
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-width: 720px;
+  min-height: 480px;
+  overflow: hidden;
+}
+
+button, input {
+  font-family: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  min-width: 0;
+}
+
+/* --- Sidebars (gabarit A & B) -------------------------------------- */
+
+.sidebar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar-bg);
+  overflow-y: auto;
+}
+
+.sidebar--a {
+  width: 320px;
+  padding: 40px 32px 40px 40px;
+  gap: 16px;
+}
+
+.sidebar--b {
+  width: 280px;
+  padding: 24px;
+  gap: 4px;
+}
+
+.sidebar-logo {
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar-brand img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+.sidebar-brand span {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.app-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 20px;
+  margin: 0;
+}
+
+.app-tagline {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.sidebar-spacer {
+  flex: 1 1 auto;
+}
+
+/* Stepper (gabarit A) */
+.stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.stepper-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.stepper-pill {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 12px;
+  background: var(--ground);
+  color: var(--muted);
+}
+.stepper-pill.is-done {
+  background: var(--success);
+  color: var(--accent-text);
+}
+.stepper-pill.is-current {
+  background: var(--ground);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.stepper-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.stepper-step.is-current .stepper-label,
+.stepper-step.is-done .stepper-label {
+  color: var(--text);
+}
+
+/* Nav (gabarit B) */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  border-radius: 8px;
+  padding: 0 6px 0 0;
+}
+.nav-item.is-active {
+  background: var(--nav-active-bg);
+}
+.nav-bar {
+  width: 3px;
+  flex: 0 0 auto;
+  align-self: stretch;
+  border-radius: 2px;
+  background: transparent;
+}
+.nav-item.is-active .nav-bar {
+  background: var(--accent);
+}
+.nav-item button {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 14px;
+  color: var(--text-soft);
+  cursor: pointer;
+  text-align: left;
+}
+.nav-item.is-active button {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+}
+.status-line img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+.status-line span.label {
+  font-size: 12px;
+  color: var(--text-soft);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--warning);
+}
+.status-dot.is-ok {
+  background: var(--success);
+}
+
+/* --- Main content ---------------------------------------------------- */
+
+.content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.content--a {
+  padding: 56px;
+}
+.content--b {
+  padding: 40px 48px;
+}
+
+.screen-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 20px;
+  margin: 0;
+  color: var(--text);
+}
+.screen-title--lg {
+  font-size: 20px;
+}
+.screen-title--md {
+  font-size: 16px;
+}
+.screen-body {
+  font-size: 14px;
+  color: var(--text-soft);
+  margin: 0;
+  max-width: 640px;
+}
+
+.center {
+  text-align: center;
+}
+.spacer {
+  flex: 1 1 auto;
+}
+.gap-sm { height: 8px; flex: 0 0 auto; }
+.gap-md { height: 14px; flex: 0 0 auto; }
+
+/* --- Cards ------------------------------------------------------------ */
+
+.card {
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.banner {
+  border: 1px solid var(--warning-edge);
+  background: var(--warning-bg);
+  color: var(--warning);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.update-banner {
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.update-banner span.text {
+  color: var(--text);
+  font-size: 13px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.update-banner progress {
+  flex: 0 0 auto;
+  width: 160px;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  accent-color: var(--accent);
+  border: none;
+  background: var(--disabled-bg);
+}
+.update-banner progress::-webkit-progress-bar {
+  background: var(--disabled-bg);
+  border-radius: 999px;
+}
+.update-banner progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+/* Linking code card (screen 1) */
+.code-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+}
+.code-card .code {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text);
+}
+.waiting-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.waiting-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+
+/* Prerequisite cards (screen 2) */
+.prereq-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.prereq-mark {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--accent-text);
+  background: var(--warning);
+}
+.prereq-mark.is-done {
+  background: var(--success);
+}
+.prereq-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.prereq-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+}
+.prereq-subtitle {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.prereq-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.row--wrap {
+  flex-wrap: wrap;
+}
+
+/* --- Buttons ------------------------------------------------------------ */
+
+.btn {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 14px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  padding: 0 22px;
+  transition: filter 120ms ease, opacity 120ms ease;
+}
+.btn:hover {
+  filter: brightness(1.08);
+}
+.btn:active {
+  filter: brightness(0.94);
+}
+.btn:disabled {
+  cursor: default;
+  filter: none;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn-primary {
+  height: 52px;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.btn-primary:disabled {
+  background: var(--disabled-bg);
+  color: var(--disabled-text);
+}
+
+.btn-secondary {
+  height: 40px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--secondary-edge);
+}
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  color: var(--accent);
+  cursor: pointer;
+}
+.link:hover {
+  text-decoration: underline;
+}
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* --- Toggle switch (real, unlike the old native checkbox) ------------- */
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+.toggle-row .toggle-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex: 0 0 auto;
+}
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+.toggle .track {
+  position: absolute;
+  inset: 0;
+  background: var(--disabled-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  transition: background 140ms ease;
+}
+.toggle .track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--text-soft);
+  transition: transform 140ms ease, background 140ms ease;
+}
+.toggle input:checked + .track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.toggle input:checked + .track::after {
+  transform: translateX(20px);
+  background: var(--accent-text);
+}
+.toggle input:focus-visible + .track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.separator {
+  height: 1px;
+  background: var(--separator);
+  border: none;
+  margin: 0;
+}
+
+/* --- Screen 3/6: ready / up to date ------------------------------------ */
+
+.hero-count {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 44px;
+  text-align: center;
+  margin: 0;
+}
+.hero-label {
+  font-size: 14px;
+  color: var(--text-soft);
+  text-align: center;
+  margin: 0;
+}
+.hero-check {
+  font-size: 32px;
+  color: var(--success);
+  text-align: center;
+}
+.hero-warn {
+  font-size: 32px;
+  color: var(--warning);
+  text-align: center;
+}
+.last-synced {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* --- Screen 4: syncing --------------------------------------------------- */
+
+progress.ring {
+  width: 100%;
+  height: 16px;
+  border-radius: 999px;
+  border: none;
+  background: var(--disabled-bg);
+}
+progress.ring::-webkit-progress-bar {
+  background: var(--disabled-bg);
+  border-radius: 999px;
+}
+progress.ring::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 200ms ease;
+}
+.syncing-count {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+  text-align: center;
+  margin: 0;
+}
+.syncing-status {
+  font-size: 14px;
+  color: var(--text-soft);
+  text-align: center;
+  margin: 0;
+}
+.syncing-file {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  margin: 0;
+}
+
+/* --- Screen 5: done -------------------------------------------------- */
+
+.tiles {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.tile {
+  flex: 1 1 140px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 12px 16px;
+  text-align: center;
+}
+.tile.is-warning {
+  border-color: var(--warning-edge);
+}
+.tile .tile-count {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+  margin: 0;
+}
+.tile .tile-label {
+  font-size: 12px;
+  color: var(--text-soft);
+  margin: 4px 0 0;
+}
+
+/* --- Screen 8: settings ------------------------------------------------ */
+
+.section-header {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.settings-row img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+.settings-row .settings-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--text);
+}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 	"unsafe"
@@ -13,6 +14,7 @@ import (
 	"github.com/tailscale/walk"
 	. "github.com/tailscale/walk/declarative"
 	"github.com/tailscale/win"
+	"github.com/wailsapp/go-webview2/pkg/edge"
 
 	"github.com/labsio-app/aion-theory-sync/internal/api"
 	"github.com/labsio-app/aion-theory-sync/internal/auth"
@@ -21,7 +23,18 @@ import (
 	"github.com/labsio-app/aion-theory-sync/internal/sync"
 	"github.com/labsio-app/aion-theory-sync/internal/ui/state"
 	"github.com/labsio-app/aion-theory-sync/internal/update"
+	"github.com/labsio-app/aion-theory-sync/internal/webui"
 )
+
+// colorGround is the one color app.go itself still needs — the MainWindow
+// and its stage Composite's background, briefly visible before WebView2
+// paints over it (window creation, a resize mid-frame). Every other color
+// decision now lives in internal/webui/templates/base.css; see
+// web_windows.go's package comment for why the screens themselves moved
+// there.
+var colorGround = walk.RGB(0x08, 0x07, 0x1a)
+
+func solid(c walk.Color) SolidColorBrush { return SolidColorBrush{Color: c} }
 
 // quickCheckTimeout bounds a background "is the server reachable, what's
 // pending" check — short because the window (or a screen's card) is
@@ -56,9 +69,7 @@ type app struct {
 	linkCancel context.CancelFunc
 	syncCancel context.CancelFunc
 
-	icon        *walk.Icon
-	logo        walk.Image
-	a2toolsLogo walk.Image
+	icon *walk.Icon
 
 	updateChecker   *update.Checker
 	updateAvailable bool
@@ -68,6 +79,15 @@ type app struct {
 
 	tray    *walk.NotifyIcon
 	watcher *folderWatcher
+
+	// chromium, webServer, httpSrv and webURL are web_windows.go's: the
+	// screens themselves render as HTML/CSS in an embedded WebView2
+	// control instead of the widget tree cmd/gui used to build directly
+	// (see that file's package comment).
+	chromium  *edge.Chromium
+	webServer *webui.Server
+	httpSrv   *http.Server
+	webURL    string
 }
 
 func runApp(startMinimized bool) {
@@ -111,8 +131,6 @@ func runApp(startMinimized bool) {
 	}
 
 	a.icon, _ = walk.NewIconFromFile(assetPath("icon.ico"))
-	a.logo, _ = walk.NewImageFromFile(assetPath("logo.png"))
-	a.a2toolsLogo, _ = walk.NewImageFromFile(assetPath("a2tools.png"))
 
 	err := MainWindow{
 		AssignTo:   &a.mw,
@@ -121,7 +139,6 @@ func runApp(startMinimized bool) {
 		Size:       Size{Width: 960, Height: 600},
 		MinSize:    Size{Width: 800, Height: 520},
 		Background: solid(colorGround),
-		Font:       fontUI,
 		Layout:     VBox{MarginsZero: true, SpacingZero: true},
 		Children: []Widget{
 			Composite{
@@ -145,7 +162,15 @@ func runApp(startMinimized bool) {
 		a.startAutoSync()
 	}
 
-	a.render()
+	// setupWebView embeds WebView2 into a.stage and navigates it to the
+	// local server's current state — the app's actual first paint, so
+	// nothing else needs to call a.render() before this. It must run
+	// before walk.App().Run() starts the normal message loop: see its own
+	// doc comment (web_windows.go) for why.
+	if err := a.setupWebView(); err != nil {
+		walk.MsgBox(nil, "Aion Theory Sync", "L'affichage n'a pas pu démarrer : "+err.Error(), walk.MsgBoxIconError)
+		return
+	}
 	if !startMinimized || a.tray == nil {
 		a.mw.Show()
 	}
@@ -160,7 +185,7 @@ func runApp(startMinimized bool) {
 			a.ui(func() {
 				a.updateInfo = &available
 				a.updateAvailable = true
-				a.render() // the banner (screens.go) is on every screen, not just Settings
+				a.render() // the banner (web_windows.go) is on every screen, not just Settings
 			})
 		})
 	}()
@@ -197,27 +222,13 @@ func (a *app) appendLog(line string) {
 	})
 }
 
-// render tears down whatever the stage is currently showing and rebuilds
-// it from a fresh ViewModel — the one place cmd/gui turns Machine state
-// into widgets, and the only thing most event handlers below need to call
-// once they've told the Machine what happened.
+// render tells the embedded page to re-fetch the current state and swap
+// itself in — the one place cmd/gui reacts to a Machine change, and the
+// only thing most event handlers below need to call once they've told the
+// Machine what happened. See web_windows.go's webuiRefreshScript.
 func (a *app) render() {
-	a.stage.SetSuspended(true)
-	defer a.stage.SetSuspended(false)
-
-	children := a.stage.Children()
-	old := make([]walk.Widget, children.Len())
-	for i := range old {
-		old[i] = children.At(i)
-	}
-	for _, c := range old {
-		c.Dispose()
-	}
-
-	vm := state.BuildViewModel(a.machine, time.Now())
-	widget := a.screenWidget(vm)
-	if err := widget.Create(NewBuilder(a.stage)); err != nil {
-		a.appendLog("Erreur d'affichage : " + err.Error())
+	if a.chromium != nil {
+		a.chromium.Eval(webuiRefreshScript)
 	}
 }
 
@@ -536,17 +547,17 @@ func (a *app) onOpenTechnicalLog() {
 		MinSize:  Size{Width: 560, Height: 420},
 		Layout:   VBox{Margins: Margins{Left: 16, Top: 16, Right: 16, Bottom: 16}, Spacing: 10},
 		Children: []Widget{
-			TextEdit{AssignTo: &textEdit, ReadOnly: true, VScroll: true, Font: fontSmall, Text: joinLines(a.logLines)},
+			TextEdit{AssignTo: &textEdit, ReadOnly: true, VScroll: true, Text: joinLines(a.logLines)},
 			Composite{
 				Layout: HBox{MarginsZero: true},
 				Children: []Widget{
 					HSpacer{},
-					secondaryButton("Copier", func() {
+					PushButton{Text: "Copier", MinSize: Size{Height: 40}, OnClicked: func() {
 						_ = walk.Clipboard().SetText(textEdit.Text())
-					}),
-					secondaryButton("Fermer", func() {
+					}},
+					PushButton{Text: "Fermer", MinSize: Size{Height: 40}, OnClicked: func() {
 						a.logWindow.Close(walk.DlgCmdCancel)
-					}),
+					}},
 				},
 			},
 		},
